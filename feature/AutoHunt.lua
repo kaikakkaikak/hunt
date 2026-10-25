@@ -209,6 +209,8 @@ return {
                 NotifyAction("AUTO HUNT", "Walk failed: " .. tostring(WalkError), 6)
                 SetStatus("WALK FAILED  //  " .. tostring(WalkError))
                 task.wait(Config.SCAN_INTERVAL)
+            else
+                print("[AutoHunt] Arrived at " .. Config.BOSS_ZONE .. ", scanning")
             end
 
             if not IsActive() then
