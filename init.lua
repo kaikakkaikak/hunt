@@ -2,10 +2,14 @@
 -- Every feature returns {Name, Dependencies, Start(Context)}, the same shape
 -- Automated-Industry-Complex uses.
 
-local TITLE = "AUTO HUNT"
+--// Bump on every push: shown on load and in the window title, so an old
+--// copy (cache, local files) is easy to spot.
+local VERSION = "0.4.0"
+local TITLE = "AUTO HUNT v" .. VERSION
 
---// Where features are read from. With the executor's readfile, LOCAL_ROOT
---// (inside its workspace folder) is tried first; otherwise BASE is fetched.
+--// Where features are read from: BASE (GitHub) by default. Set
+--// getgenv().AutoHuntLocal = true before running to read LOCAL_ROOT, inside
+--// the executor's workspace folder, instead.
 local LOCAL_ROOT = "autoHunt/"
 local BASE = "https://raw.githubusercontent.com/kaikakkaikak/hunt/refs/heads/master/"
 
@@ -128,8 +132,10 @@ end
 --// Loading
 ------------------------------------------------------------------------
 
+local USE_LOCAL = Lifetime.Env ~= nil and Lifetime.Env.AutoHuntLocal == true
+
 local function readLocal(Path)
-    if type(readfile) ~= "function" or type(isfile) ~= "function" then
+    if not USE_LOCAL or type(readfile) ~= "function" or type(isfile) ~= "function" then
         return nil
     end
 
@@ -145,9 +151,12 @@ local function fetchRemote(Path)
         return nil
     end
 
+    --// A fresh query string skips GitHub raw's ~5 minute cache after a push.
+    local Url = BASE .. Path .. "?t=" .. tostring(os.time())
+
     for _ = 0, FETCH_RETRIES do
         local Ok, Body = pcall(function()
-            return game:HttpGet(BASE .. Path, true)
+            return game:HttpGet(Url, true)
         end)
 
         if Ok and type(Body) == "string" and Body ~= "" and not string.find(Body, "^404: Not Found") then
@@ -187,12 +196,18 @@ local function loadSpec(Path)
 end
 
 --// How AutoHunt runs this script again on the next server: the way it was
---// loaded this time, local file first.
+--// loaded this time.
 if readLocal("init.lua") then
-    Context.ReloadSource = string.format("loadstring(readfile(%q))()", LOCAL_ROOT .. "init.lua")
+    Context.ReloadSource = string.format("getgenv().AutoHuntLocal = true\nloadstring(readfile(%q))()", LOCAL_ROOT .. "init.lua")
 elseif BASE ~= "" then
-    Context.ReloadSource = string.format("loadstring(game:HttpGet(%q))()", BASE .. "init.lua")
+    Context.ReloadSource = string.format(
+        "loadstring(game:HttpGet(%q .. tostring(os.time())))()",
+        BASE .. "init.lua?t="
+    )
 end
+
+print("[AutoHunt] Loading " .. TITLE .. (readLocal("init.lua") and " from local files" or " from GitHub"))
+Context.Title = TITLE
 
 local Specs = {}
 local StartOrder = {}

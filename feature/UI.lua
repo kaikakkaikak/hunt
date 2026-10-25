@@ -115,7 +115,7 @@ return {
             Font = Enum.Font.GothamBold,
             TextSize = 15,
             TextXAlignment = Enum.TextXAlignment.Left,
-            Text = "AUTO HUNT",
+            Text = Context.Title or "AUTO HUNT",
             LayoutOrder = 1,
             Parent = Window,
         })
