@@ -7,7 +7,7 @@ local TITLE = "AUTO HUNT"
 --// Where features are read from. With the executor's readfile, LOCAL_ROOT
 --// (inside its workspace folder) is tried first; otherwise BASE is fetched.
 local LOCAL_ROOT = "autoHunt/"
-local BASE = "" -- e.g. "https://raw.githubusercontent.com/<user>/autoHunt/refs/heads/main/"
+local BASE = "https://raw.githubusercontent.com/kaikakkaikak/hunt/refs/heads/master/"
 
 --// A failed download is retried this many times before giving up.
 local FETCH_RETRIES = 2
@@ -157,23 +157,29 @@ local function fetchRemote(Path)
     return nil
 end
 
+--// Shown on screen too: a load error otherwise only reaches the console.
+local function fail(Message)
+    Context.NotifyAction(TITLE .. " LOAD FAILED", string.match(Message, "^[^\n]*"), 15)
+    error("[AutoHunt] " .. Message, 0)
+end
+
 local function loadSpec(Path)
     local Body = readLocal(Path) or fetchRemote(Path)
 
     if not Body then
-        error("[AutoHunt] Could not load " .. Path, 0)
+        fail("Could not load " .. Path)
     end
 
     local Chunk, CompileError = loadstring(Body, "@" .. Path)
 
     if not Chunk then
-        error("[AutoHunt] Failed to compile " .. Path .. ": " .. tostring(CompileError), 0)
+        fail("Failed to compile " .. Path .. ": " .. tostring(CompileError))
     end
 
     local Spec = Chunk()
 
     if type(Spec) ~= "table" or type(Spec.Start) ~= "function" then
-        error("[AutoHunt] Invalid module: " .. Path, 0)
+        fail("Invalid module: " .. Path)
     end
 
     return Spec
@@ -212,7 +218,7 @@ local function start(Name)
     local Ok, Module = xpcall(Spec.Start, debug.traceback, Context)
 
     if not Ok then
-        error("[AutoHunt] " .. Name .. " failed to start\n" .. tostring(Module), 0)
+        fail(Name .. " failed to start: " .. tostring(Module))
     end
 
     Context.Modules[Name] = Module
