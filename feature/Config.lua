@@ -41,6 +41,17 @@ return {
             AUTO_BUTTON_NAMES = { "Auto", "AutoButton", "AutoFight" },
             AUTO_BUTTON_TEXTS = { "AUTO" },
 
+            --// The zone walked to before every look for the boss.
+            BOSS_ZONE = "Boss03",
+            --// Within this many studs of the zone counts as arrived.
+            ZONE_ARRIVE_DISTANCE = 10,
+            --// The walk gives up after this and the hunt carries on from there.
+            ZONE_WALK_TIMEOUT = 60,
+
+            --// After the boss dies, keep the game's auto on this long to
+            --// pick up the drops.
+            LOOT_WAIT_SECONDS = 3,
+
             --// After joining a server, wait this long for the map and bosses
             --// to load before the first scan.
             JOIN_SETTLE_SECONDS = 6,

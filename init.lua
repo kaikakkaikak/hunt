@@ -20,6 +20,7 @@ local MODULES = {
     "feature/ServerHop.lua",
     "feature/BossFinder.lua",
     "feature/BossTimer.lua",
+    "feature/ZoneWalk.lua",
     "feature/GameAuto.lua",
     "feature/AutoHunt.lua",
     "feature/UI.lua",

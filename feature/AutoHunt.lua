@@ -1,15 +1,17 @@
 -- AutoHunt is the main loop. While running, with at least one boss selected:
 --   1. after joining, wait for the server to load (Config.JOIN_SETTLE_SECONDS);
---   2. look for a selected boss, Config.SCAN_TRIES times;
---   3. found: switch the game's auto-fight on and wait until the boss is dead
---      or gone, then hop for the next one (Hop After Kill) or keep scanning;
---   4. not found: when a selected boss's timer says it spawns within
+--   2. walk to the boss zone (Config.BOSS_ZONE);
+--   3. look for a selected boss, Config.SCAN_TRIES times;
+--   4. found: switch the game's auto-fight on and wait until the boss is dead
+--      or gone, give Config.LOOT_WAIT_SECONDS to pick up the drops, then hop
+--      for the next one (Hop After Kill) or keep scanning;
+--   5. not found: when a selected boss's timer says it spawns within
 --      Config.BOSS_WAIT_MAX_SECONDS, wait for it here;
---   5. otherwise (no timer, unreadable, or too long): queue this script for
+--   6. otherwise (no timer, unreadable, or too long): queue this script for
 --      the next server and hop.
 return {
     Name = "AutoHunt",
-    Dependencies = {"Config", "Settings", "ServerHop", "BossFinder", "BossTimer", "GameAuto"},
+    Dependencies = {"Config", "Settings", "ServerHop", "BossFinder", "BossTimer", "ZoneWalk", "GameAuto"},
 
     Start = function(Context)
         local Config = Context.Config
@@ -17,6 +19,7 @@ return {
         local ServerHop = Context.ServerHop
         local BossFinder = Context.BossFinder
         local BossTimer = Context.BossTimer
+        local ZoneWalk = Context.ZoneWalk
         local GameAuto = Context.GameAuto
         local Lifetime = Context.Lifetime
         local NotifyAction = Context.NotifyAction
@@ -152,6 +155,11 @@ return {
                 task.wait(Config.WATCH_INTERVAL)
             end
 
+            if IsActive() then
+                SetStatus("LOOTING  " .. Boss.Name)
+                task.wait(Config.LOOT_WAIT_SECONDS)
+            end
+
             S.Target = nil
             GameAuto:Disable()
         end
@@ -189,6 +197,18 @@ return {
 
             if not HasSelection() then
                 SetStatus("NO BOSS SELECTED")
+                return
+            end
+
+            SetStatus("WALKING TO  " .. Config.BOSS_ZONE)
+
+            local Arrived, WalkError = ZoneWalk.WalkTo(Config.BOSS_ZONE)
+
+            if not Arrived then
+                warn("[AutoHunt] Walk to zone failed:", WalkError)
+            end
+
+            if not IsActive() then
                 return
             end
 
