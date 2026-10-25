@@ -4,14 +4,21 @@
 
 --// Bump on every push: shown on load and in the window title, so an old
 --// copy (cache, local files) is easy to spot.
-local VERSION = "0.4.0"
+local VERSION = "0.5.0"
 local TITLE = "AUTO HUNT v" .. VERSION
 
---// Where features are read from: BASE (GitHub) by default. Set
+--// Where features are read from: GitHub by default. Set
 --// getgenv().AutoHuntLocal = true before running to read LOCAL_ROOT, inside
 --// the executor's workspace folder, instead.
 local LOCAL_ROOT = "autoHunt/"
-local BASE = "https://raw.githubusercontent.com/kaikakkaikak/hunt/refs/heads/master/"
+local REPO = "kaikakkaikak/hunt"
+local BRANCH = "master"
+--// raw.githubusercontent caches a branch URL for ~5 minutes and ignores
+--// query strings, so files are read from the latest commit's URL instead,
+--// found through this API. The branch URL is the fallback when it fails
+--// (e.g. the API's 60 requests an hour limit).
+local COMMIT_API = "https://api.github.com/repos/" .. REPO .. "/commits/" .. BRANCH
+local BASE = "https://raw.githubusercontent.com/" .. REPO .. "/refs/heads/" .. BRANCH .. "/"
 
 --// A failed download is retried this many times before giving up.
 local FETCH_RETRIES = 2
@@ -146,13 +153,46 @@ local function readLocal(Path)
     return Ok and Body or nil
 end
 
+--// The raw URL of the branch's latest commit, or nil.
+local function resolveCommitBase()
+    local Ok, Body = pcall(function()
+        return game:HttpGet(COMMIT_API, true)
+    end)
+
+    if not Ok or type(Body) ~= "string" then
+        return nil
+    end
+
+    local Decoded, Commit = pcall(function()
+        return Services.HttpService:JSONDecode(Body)
+    end)
+
+    local Sha = Decoded and type(Commit) == "table" and Commit.sha
+
+    if type(Sha) ~= "string" or not string.match(Sha, "^%x+$") then
+        return nil
+    end
+
+    return "https://raw.githubusercontent.com/" .. REPO .. "/" .. Sha .. "/", Sha
+end
+
+if not USE_LOCAL then
+    local CommitBase, Sha = resolveCommitBase()
+
+    if CommitBase then
+        BASE = CommitBase
+        print("[AutoHunt] Using commit " .. string.sub(Sha, 1, 7))
+    else
+        warn("[AutoHunt] Could not read the latest commit; the branch may be up to 5 minutes old")
+    end
+end
+
 local function fetchRemote(Path)
     if BASE == "" then
         return nil
     end
 
-    --// A fresh query string skips GitHub raw's ~5 minute cache after a push.
-    local Url = BASE .. Path .. "?t=" .. tostring(os.time())
+    local Url = BASE .. Path
 
     for _ = 0, FETCH_RETRIES do
         local Ok, Body = pcall(function()
@@ -200,10 +240,7 @@ end
 if readLocal("init.lua") then
     Context.ReloadSource = string.format("getgenv().AutoHuntLocal = true\nloadstring(readfile(%q))()", LOCAL_ROOT .. "init.lua")
 elseif BASE ~= "" then
-    Context.ReloadSource = string.format(
-        "loadstring(game:HttpGet(%q .. tostring(os.time())))()",
-        BASE .. "init.lua?t="
-    )
+    Context.ReloadSource = string.format("loadstring(game:HttpGet(%q))()", BASE .. "init.lua")
 end
 
 print("[AutoHunt] Loading " .. TITLE .. (readLocal("init.lua") and " from local files" or " from GitHub"))

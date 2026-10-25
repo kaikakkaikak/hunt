@@ -31,20 +31,45 @@ return {
             return nil
         end
 
-        --// The zone's position, or nil when it is not in workspace (yet).
-        function ZoneWalk.GetZonePosition(ZoneName)
-            local Zone = workspace:FindFirstChild(ZoneName, true)
+        --// The centre of the parts inside a Folder (or any container), or nil.
+        local function GetPartsCenter(Container)
+            local Sum, Count = Vector3.zero, 0
 
-            if not Zone then
-                return nil
+            for _, Descendant in ipairs(Container:GetDescendants()) do
+                if Descendant:IsA("BasePart") then
+                    Sum += Descendant.Position
+                    Count += 1
+                end
             end
 
+            return Count > 0 and Sum / Count or nil
+        end
+
+        local function GetPosition(Zone)
             if Zone:IsA("BasePart") then
                 return Zone.Position
             end
 
             if Zone:IsA("Model") then
                 return Zone:GetPivot().Position
+            end
+
+            return GetPartsCenter(Zone)
+        end
+
+        --// The zone's position and the instance used, or nil when no
+        --// instance of that name (any case) with a position is in workspace.
+        function ZoneWalk.GetZonePosition(ZoneName)
+            local Wanted = string.lower(ZoneName)
+
+            for _, Descendant in ipairs(workspace:GetDescendants()) do
+                if string.lower(Descendant.Name) == Wanted then
+                    local Position = GetPosition(Descendant)
+
+                    if Position then
+                        return Position, Descendant
+                    end
+                end
             end
 
             return nil
@@ -94,7 +119,8 @@ return {
             local Position = ZoneWalk.GetZonePosition(ZoneName)
 
             if not Position then
-                return false, ZoneName .. " not found in workspace"
+                local Streaming = workspace.StreamingEnabled and " (StreamingEnabled: may not be loaded yet)" or ""
+                return false, ZoneName .. " not found in workspace" .. Streaming
             end
 
             local Humanoid, Root = GetCharacter()

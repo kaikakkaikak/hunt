@@ -206,6 +206,9 @@ return {
 
             if not Arrived then
                 warn("[AutoHunt] Walk to zone failed:", WalkError)
+                NotifyAction("AUTO HUNT", "Walk failed: " .. tostring(WalkError), 6)
+                SetStatus("WALK FAILED  //  " .. tostring(WalkError))
+                task.wait(Config.SCAN_INTERVAL)
             end
 
             if not IsActive() then
