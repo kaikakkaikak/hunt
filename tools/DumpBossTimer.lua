@@ -2,7 +2,7 @@
 -- Config boss name, with its children: class, Text / Value and attributes.
 -- Run it in the executor while the timer is counting down, then again while
 -- the boss is alive, and send both outputs.
-local KEYWORDS = { "timer", "obsidian", "pharaoh" }
+local KEYWORDS = { "timer", "obsidian", "pharaoh", "tempest", "dragon", "whitefang", "sabertooth", "volcano", "turtle" }
 local MAX_DEPTH = 6
 
 local function Describe(Object)

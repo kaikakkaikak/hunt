@@ -156,18 +156,31 @@ return {
             Button.BackgroundColor3 = Selected and COLOR.On or COLOR.Row
         end
 
+        --// Boss name -> its button, to repaint all when the pick changes.
+        local BossButtons = {}
+
+        local function PaintAllBosses()
+            for Name, Button in pairs(BossButtons) do
+                PaintBoss(Button, Name)
+            end
+        end
+
+        --// Only one boss at a time: picking one drops the other, picking
+        --// the selected one again clears it.
         for Index, Name in ipairs(Config.BOSS_NAMES) do
             local Button = MakeButton(List, "", Index)
             Button.TextXAlignment = Enum.TextXAlignment.Left
             Create("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = Button })
-            PaintBoss(Button, Name)
+            BossButtons[Name] = Button
 
             Lifetime.Connect(Button.Activated, function()
-                Data.Selected[Name] = not Data.Selected[Name] or nil
+                Settings:Select(Settings:GetSelected() ~= Name and Name or nil)
                 Settings:Save()
-                PaintBoss(Button, Name)
+                PaintAllBosses()
             end)
         end
+
+        PaintAllBosses()
 
         ------------------------------------------------------------------------
         --// Controls

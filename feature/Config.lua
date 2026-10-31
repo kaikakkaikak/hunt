@@ -9,9 +9,12 @@ return {
             Name = "Config",
 
             --// The bosses' model names in workspace, as shown in the
-            --// selection list.
+            --// selection list. Only one can be selected at a time.
             BOSS_NAMES = {
+                "Whitefang Sabertooth",
                 "Obsidian Pharaoh",
+                "Tempest Dragon King",
+                "Volcano Turtle King",
             },
 
             --// Only a model with a living Humanoid counts as the boss, so a
@@ -24,6 +27,11 @@ return {
             --// Boss name -> which of those timers is its own.
             BOSS_TIMERS = {
                 ["Obsidian Pharaoh"] = 3,
+                --// Assumed from the zone number (Boss02 -> 2, ...); check
+                --// with tools/DumpBossTimer.lua.
+                ["Whitefang Sabertooth"] = 2,
+                ["Tempest Dragon King"] = 4,
+                ["Volcano Turtle King"] = 5,
             },
             --// Stay when a selected boss spawns within this; hop otherwise.
             BOSS_WAIT_MAX_SECONDS = 30,
@@ -41,8 +49,13 @@ return {
             AUTO_BUTTON_NAMES = { "Auto", "AutoButton", "AutoFight" },
             AUTO_BUTTON_TEXTS = { "AUTO" },
 
-            --// The zone walked to before every look for the boss.
-            BOSS_ZONE = "Boss03",
+            --// Boss name -> the zone walked to before every look for it.
+            BOSS_ZONES = {
+                ["Whitefang Sabertooth"] = "Boss02",
+                ["Obsidian Pharaoh"] = "Boss03",
+                ["Tempest Dragon King"] = "Boss04",
+                ["Volcano Turtle King"] = "Boss05",
+            },
             --// Within this many studs of the zone counts as arrived.
             ZONE_ARRIVE_DISTANCE = 10,
             --// The walk gives up after this and the hunt carries on from there.

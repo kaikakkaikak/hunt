@@ -1,6 +1,6 @@
 -- AutoHunt is the main loop. While running, with at least one boss selected:
 --   1. after joining, wait for the server to load (Config.JOIN_SETTLE_SECONDS);
---   2. walk to the boss zone (Config.BOSS_ZONE);
+--   2. walk to the selected boss's zone (Config.BOSS_ZONES);
 --   3. look for a selected boss, Config.SCAN_TRIES times;
 --   4. found: switch the game's auto-fight on and wait until the boss is dead
 --      or gone, give Config.LOOT_WAIT_SECONDS to pick up the drops, then hop
@@ -200,9 +200,17 @@ return {
                 return
             end
 
-            SetStatus("WALKING TO  " .. Config.BOSS_ZONE)
+            local BossName = Settings:GetSelected()
+            local Zone = Config.BOSS_ZONES[BossName]
 
-            local Arrived, WalkError = ZoneWalk.WalkTo(Config.BOSS_ZONE)
+            if not Zone then
+                SetStatus("NO ZONE FOR  " .. tostring(BossName))
+                return
+            end
+
+            SetStatus("WALKING TO  " .. Zone)
+
+            local Arrived, WalkError = ZoneWalk.WalkTo(Zone)
 
             if not Arrived then
                 warn("[AutoHunt] Walk to zone failed:", WalkError)
@@ -210,7 +218,7 @@ return {
                 SetStatus("WALK FAILED  //  " .. tostring(WalkError))
                 task.wait(Config.SCAN_INTERVAL)
             else
-                print("[AutoHunt] Arrived at " .. Config.BOSS_ZONE .. ", scanning")
+                print("[AutoHunt] Arrived at " .. Zone .. ", scanning")
             end
 
             if not IsActive() then

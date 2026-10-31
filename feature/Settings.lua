@@ -14,7 +14,7 @@ return {
         local Settings = {
             Name = "Settings",
             Data = {
-                --// Boss name -> true.
+                --// Boss name -> true. Holds at most one boss.
                 Selected = {},
                 Running = false,
                 HopAfterKill = true,
@@ -28,11 +28,21 @@ return {
                 return
             end
 
+            --// Older saves could hold several bosses; keep only the first
+            --// by name so the pick stays the same between loads.
             if type(Saved.Selected) == "table" then
+                local Names = {}
+
                 for Name, IsSelected in pairs(Saved.Selected) do
                     if type(Name) == "string" and IsSelected == true then
-                        Data.Selected[Name] = true
+                        table.insert(Names, Name)
                     end
+                end
+
+                table.sort(Names)
+
+                if Names[1] then
+                    Data.Selected = { [Names[1]] = true }
                 end
             end
 
@@ -104,6 +114,16 @@ return {
             elseif type(Resume) == "string" then
                 Apply(Decode(Resume))
             end
+        end
+
+        --// The selected boss's name, or nil.
+        function Settings:GetSelected()
+            return (next(Data.Selected))
+        end
+
+        --// Selects only Name; nil clears the selection.
+        function Settings:Select(Name)
+            Data.Selected = Name and { [Name] = true } or {}
         end
 
         function Settings:SelectedNames()
