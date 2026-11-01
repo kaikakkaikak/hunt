@@ -58,8 +58,11 @@ return {
             },
             --// Within this many studs of the zone counts as arrived.
             ZONE_ARRIVE_DISTANCE = 10,
-            --// The walk gives up after this and the hunt carries on from there.
+            --// A walk gives up after this and is tried again from there.
             ZONE_WALK_TIMEOUT = 60,
+            --// This many failed walks in a row: hop instead of fighting from
+            --// somewhere that is not the boss's spawn point.
+            WALK_FAILS_BEFORE_HOP = 3,
 
             --// After the boss dies, keep the game's auto on this long to
             --// pick up the drops.

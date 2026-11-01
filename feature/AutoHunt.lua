@@ -1,6 +1,8 @@
 -- AutoHunt is the main loop. While running, with at least one boss selected:
 --   1. after joining, wait for the server to load (Config.JOIN_SETTLE_SECONDS);
---   2. walk to the selected boss's zone (Config.BOSS_ZONES);
+--   2. walk to the selected boss's zone (Config.BOSS_ZONES) with the game's
+--      auto off; nothing below runs until arrived (walk again, or hop after
+--      Config.WALK_FAILS_BEFORE_HOP failed walks);
 --   3. look for a selected boss, Config.SCAN_TRIES times;
 --   4. found: switch the game's auto-fight on and wait until the boss is dead
 --      or gone, give Config.LOOT_WAIT_SECONDS to pick up the drops, then hop
@@ -34,6 +36,8 @@ return {
                 Target = nil,
                 --// The reload is queued for the next server already.
                 Queued = false,
+                --// Walks to the zone that failed in a row.
+                WalkFails = 0,
             },
         }
 
@@ -291,22 +295,38 @@ return {
                 return
             end
 
+            --// Auto stays off on the way: the game's auto would fight
+            --// whatever is near instead of walking on.
+            GameAuto:Disable()
             SetStatus("WALKING TO  " .. Zone)
 
             local Arrived, WalkError = ZoneWalk.WalkTo(Zone)
 
-            if not Arrived then
-                warn("[AutoHunt] Walk to zone failed:", WalkError)
-                NotifyAction("AUTO HUNT", "Walk failed: " .. tostring(WalkError), 6)
-                SetStatus("WALK FAILED  //  " .. tostring(WalkError))
-                task.wait(Config.SCAN_INTERVAL)
-            else
-                print("[AutoHunt] Arrived at " .. Zone .. ", scanning")
-            end
-
             if not IsActive() then
                 return
             end
+
+            --// Not at the spawn point: no scan, no fight, no auto. Walk again
+            --// next step, or hop after WALK_FAILS_BEFORE_HOP tries in a row.
+            if not Arrived then
+                S.WalkFails += 1
+                warn(string.format("[AutoHunt] Walk to zone failed (%d / %d):", S.WalkFails, Config.WALK_FAILS_BEFORE_HOP), WalkError)
+                NotifyAction("AUTO HUNT", "Walk failed: " .. tostring(WalkError), 6)
+                SetStatus("WALK FAILED  //  " .. tostring(WalkError))
+
+                if S.WalkFails >= Config.WALK_FAILS_BEFORE_HOP then
+                    S.WalkFails = 0
+                    print("[AutoHunt] Hopping: cannot reach " .. Zone)
+                    Hop()
+                else
+                    task.wait(Config.SCAN_INTERVAL)
+                end
+
+                return
+            end
+
+            S.WalkFails = 0
+            print("[AutoHunt] Arrived at " .. Zone .. ", scanning")
 
             local Boss = Scan()
             local Reason
