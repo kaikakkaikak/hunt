@@ -4,7 +4,7 @@
 
 --// Bump on every push: shown on load and in the window title, so an old
 --// copy (cache, local files) is easy to spot.
-local VERSION = "0.7.0"
+local VERSION = "0.7.1"
 local TITLE = "AUTO HUNT v" .. VERSION
 
 --// Where features are read from: GitHub by default. Set
@@ -178,8 +178,33 @@ local function resolveCommitBase()
     return "https://raw.githubusercontent.com/" .. REPO .. "/" .. Sha .. "/", Sha
 end
 
+--// A reload queued by a hop names the commit it came from, so the next
+--// server uses the same code without asking the API again: the API allows
+--// only 60 requests an hour, fewer than a long run of hops makes.
+local function takeQueuedCommit()
+    local Queued = Lifetime.Env and Lifetime.Env.AutoHuntCommit
+
+    if Lifetime.Env then
+        Lifetime.Env.AutoHuntCommit = nil
+    end
+
+    if type(Queued) == "string" and string.match(Queued, "^%x+$") then
+        return "https://raw.githubusercontent.com/" .. REPO .. "/" .. Queued .. "/", Queued
+    end
+
+    return nil
+end
+
+local COMMIT_SHA
+
 if not USE_LOCAL then
-    local CommitBase, Sha = resolveCommitBase()
+    local CommitBase, Sha = takeQueuedCommit()
+
+    if not CommitBase then
+        CommitBase, Sha = resolveCommitBase()
+    end
+
+    COMMIT_SHA = Sha
 
     if CommitBase then
         BASE = CommitBase
@@ -241,6 +266,8 @@ end
 --// loaded this time.
 if readLocal("init.lua") then
     Context.ReloadSource = string.format("getgenv().AutoHuntLocal = true\nloadstring(readfile(%q))()", LOCAL_ROOT .. "init.lua")
+elseif COMMIT_SHA then
+    Context.ReloadSource = string.format("getgenv().AutoHuntCommit = %q\nloadstring(game:HttpGet(%q))()", COMMIT_SHA, BASE .. "init.lua")
 elseif BASE ~= "" then
     Context.ReloadSource = string.format("loadstring(game:HttpGet(%q))()", BASE .. "init.lua")
 end
@@ -264,7 +291,14 @@ local function start(Name)
         return Context.Modules[Name]
     end
 
-    local Spec = assert(Specs[Name], "Missing dependency: " .. tostring(Name))
+    --// A dependency missing from MODULES (an init.lua older than the
+    --// features it loaded) is read by its name instead of failing.
+    if not Specs[Name] then
+        warn("[AutoHunt] " .. tostring(Name) .. " is not in MODULES, loading it by name")
+        Specs[Name] = loadSpec("feature/" .. tostring(Name) .. ".lua")
+    end
+
+    local Spec = Specs[Name]
 
     for _, Dependency in ipairs(Spec.Dependencies or {}) do
         start(Dependency)
