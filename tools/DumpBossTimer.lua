@@ -12,6 +12,8 @@ local function Describe(Object)
         table.insert(Parts, string.format("Text=%q", Object.Text))
     elseif Object:IsA("ValueBase") then
         table.insert(Parts, "Value=" .. tostring(Object.Value))
+    elseif Object:IsA("Humanoid") then
+        table.insert(Parts, string.format("Health=%s/%s", tostring(Object.Health), tostring(Object.MaxHealth)))
     end
 
     for Name, Value in pairs(Object:GetAttributes()) do

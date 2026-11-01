@@ -64,8 +64,8 @@ return {
             --// After the boss dies, keep the game's auto on this long to
             --// pick up the drops.
             LOOT_WAIT_SECONDS = 3,
-            --// The boss taking no damage this long while auto is on means
-            --// the press did not take: press the auto button again.
+            --// The boss taking damage and then none for this long means the
+            --// game turned its auto off: press the auto button again.
             AUTO_STALL_SECONDS = 8,
 
             --// After joining a server, wait this long for the map and bosses

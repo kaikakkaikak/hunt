@@ -140,18 +140,59 @@ return {
             return nil, Name .. " DID NOT SPAWN"
         end
 
-        local function GetHealth(Boss)
+        --// Names a game may keep the boss's health under, as an attribute
+        --// on the model or a NumberValue / IntValue inside it.
+        local HEALTH_NAMES = { "Health", "HP", "CurrentHealth", "Hp" }
+
+        --// Every health reading found on the boss (source -> number): the
+        --// Humanoid's and any custom one, since games often leave the
+        --// Humanoid at full health and track the real one elsewhere.
+        local function ReadHealths(Boss)
+            local Healths = {}
             local Humanoid = Boss:FindFirstChildOfClass("Humanoid")
-            return Humanoid and Humanoid.Health or nil
+
+            if Humanoid then
+                Healths.Humanoid = Humanoid.Health
+            end
+
+            for _, Name in ipairs(HEALTH_NAMES) do
+                local Attribute = Boss:GetAttribute(Name)
+
+                if type(Attribute) == "number" then
+                    Healths["@" .. Name] = Attribute
+                end
+
+                local Value = Boss:FindFirstChild(Name, true)
+
+                if Value and (Value:IsA("NumberValue") or Value:IsA("IntValue")) then
+                    Healths[Name] = Value.Value
+                end
+            end
+
+            return Healths
+        end
+
+        --// True when any reading in Now is lower than the same one in Before.
+        local function TookDamage(Before, Now)
+            for Source, Health in pairs(Now) do
+                if Before[Source] and Health < Before[Source] then
+                    return true
+                end
+            end
+
+            return false
         end
 
         --// Keeps the game's auto on during a fight: retries a press that
         --// failed (button not on screen yet right after the walk), and
-        --// presses again when the boss takes no damage for AUTO_STALL_SECONDS
-        --// (the press did not land, or the game turned its auto off).
+        --// presses again when the boss stops taking damage for
+        --// AUTO_STALL_SECONDS (the game turned its auto off). Only after
+        --// damage was seen this fight: a health we cannot read never drops,
+        --// and pressing on that would toggle auto off and on forever.
         local function NewAutoKeeper(Boss)
-            local LastHealth = GetHealth(Boss)
+            local LastHealths = ReadHealths(Boss)
             local LastDamageAt = os.clock()
+            local SawDamage = false
             local Warned = false
 
             return function()
@@ -167,17 +208,19 @@ return {
                     return
                 end
 
-                local Health = GetHealth(Boss)
+                local Healths = ReadHealths(Boss)
 
-                if Health and LastHealth and Health < LastHealth then
+                if TookDamage(LastHealths, Healths) then
+                    SawDamage = true
                     LastDamageAt = os.clock()
                 end
 
-                LastHealth = Health
+                LastHealths = Healths
 
-                if os.clock() - LastDamageAt >= Config.AUTO_STALL_SECONDS then
-                    print("[AutoHunt] " .. Boss.Name .. " takes no damage, pressing auto again")
+                if SawDamage and os.clock() - LastDamageAt >= Config.AUTO_STALL_SECONDS then
+                    print("[AutoHunt] " .. Boss.Name .. " stopped taking damage, pressing auto again")
                     GameAuto:Repress()
+                    SawDamage = false
                     LastDamageAt = os.clock()
                 end
             end
