@@ -140,18 +140,58 @@ return {
             return nil, Name .. " DID NOT SPAWN"
         end
 
+        local function GetHealth(Boss)
+            local Humanoid = Boss:FindFirstChildOfClass("Humanoid")
+            return Humanoid and Humanoid.Health or nil
+        end
+
+        --// Keeps the game's auto on during a fight: retries a press that
+        --// failed (button not on screen yet right after the walk), and
+        --// presses again when the boss takes no damage for AUTO_STALL_SECONDS
+        --// (the press did not land, or the game turned its auto off).
+        local function NewAutoKeeper(Boss)
+            local LastHealth = GetHealth(Boss)
+            local LastDamageAt = os.clock()
+            local Warned = false
+
+            return function()
+                if not GameAuto:IsEnabled() then
+                    local Enabled, Error = GameAuto:Enable()
+
+                    if not Enabled and not Warned then
+                        Warned = true
+                        NotifyAction("AUTO HUNT", "Auto mode: " .. tostring(Error) .. ", retrying", 6)
+                    end
+
+                    LastDamageAt = os.clock()
+                    return
+                end
+
+                local Health = GetHealth(Boss)
+
+                if Health and LastHealth and Health < LastHealth then
+                    LastDamageAt = os.clock()
+                end
+
+                LastHealth = Health
+
+                if os.clock() - LastDamageAt >= Config.AUTO_STALL_SECONDS then
+                    print("[AutoHunt] " .. Boss.Name .. " takes no damage, pressing auto again")
+                    GameAuto:Repress()
+                    LastDamageAt = os.clock()
+                end
+            end
+        end
+
         local function Fight(Boss)
             S.Target = Boss
             SetStatus("FIGHTING  " .. Boss.Name)
             NotifyAction("AUTO HUNT", Boss.Name .. " found, using the game's auto", 5)
 
-            local Enabled, Error = GameAuto:Enable()
-
-            if not Enabled then
-                NotifyAction("AUTO HUNT", "Auto mode: " .. tostring(Error), 6)
-            end
+            local KeepAuto = NewAutoKeeper(Boss)
 
             while IsActive() and BossFinder.IsAlive(Boss) do
+                KeepAuto()
                 task.wait(Config.WATCH_INTERVAL)
             end
 

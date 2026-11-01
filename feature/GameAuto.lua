@@ -49,12 +49,8 @@ return {
             return nil
         end
 
-        --// True when pressed now or already on; false and why otherwise.
-        local function Press(WantEnabled)
-            if S.Enabled == WantEnabled then
-                return true
-            end
-
+        --// Clicks the button and records WantEnabled. True, or false and why.
+        local function Click(WantEnabled)
             local Button = GameAuto:FindButton()
 
             if not Button then
@@ -67,6 +63,26 @@ return {
 
             S.Enabled = WantEnabled
             return true
+        end
+
+        --// True when pressed now or already on; false and why otherwise.
+        local function Press(WantEnabled)
+            if S.Enabled == WantEnabled then
+                return true
+            end
+
+            return Click(WantEnabled)
+        end
+
+        function GameAuto:IsEnabled()
+            return S.Enabled
+        end
+
+        --// Presses the button even though we think it is on already: the
+        --// game may have switched its auto off by itself (death, respawn,
+        --// a previous press that did not land), leaving S.Enabled wrong.
+        function GameAuto:Repress()
+            return Click(true)
         end
 
         function GameAuto:Enable()
