@@ -63,6 +63,10 @@ return {
             --// This many failed walks in a row: hop instead of fighting from
             --// somewhere that is not the boss's spawn point.
             WALK_FAILS_BEFORE_HOP = 3,
+            --// The game's auto taking over a walk (left on from before the
+            --// hop) is pressed off and the walk retried this many times per
+            --// server before such walks count as failed.
+            AUTO_OFF_TRIES = 2,
 
             --// After the boss dies, keep the game's auto on this long to
             --// pick up the drops.
@@ -70,6 +74,14 @@ return {
             --// The boss taking damage and then none for this long means the
             --// game turned its auto off: press the auto button again.
             AUTO_STALL_SECONDS = 8,
+            --// After pressing auto in a fight, our character must move, turn
+            --// or the boss take damage within this; otherwise the press is
+            --// taken to have turned auto off and is made again, up to
+            --// AUTO_CONFIRM_TRIES times (2: on -> off -> on at worst).
+            AUTO_CONFIRM_SECONDS = 5,
+            AUTO_CONFIRM_TRIES = 2,
+            --// Our character moving this far (X and Z) counts as the auto working.
+            AUTO_ACTIVE_MOVE = 3,
 
             --// After joining a server, wait this long for the map and bosses
             --// to load before the first scan.

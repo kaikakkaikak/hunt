@@ -7,9 +7,44 @@
 -- counting only X and Z: a zone's centre is often up in the air or under
 -- the floor, out of reach in 3D. A walk that stops making progress ends
 -- early instead of running into the timeout.
+--
+-- A walk also ends early when something else drives the character: the
+-- Humanoid's walk target changed away from ours (the game's auto-fight
+-- moving it to a monster), or it moves but gets no closer. WalkTo then
+-- reports "hijacked", so the caller can switch the game's auto off.
+local Core = {}
+
+--// Our MoveTo(Target) was overridden: the Humanoid walks to a part, or to
+--// a point more than Tolerance (X and Z only) away from Target.
+function Core.IsHijacked(WalkToPoint, WalkToPart, Target, Tolerance)
+    if WalkToPart ~= nil then
+        return true
+    end
+
+    local DX, DZ = WalkToPoint.X - Target.X, WalkToPoint.Z - Target.Z
+    return DX * DX + DZ * DZ > Tolerance * Tolerance
+end
+
+--// One progress check over a window: "stuck" (moved less than MinStep),
+--// "pulled" (moved at least PullMove yet got no MinStep closer: walked
+--// somewhere else), or "ok". Sliding along a wall moves too little to
+--// count as pulled.
+function Core.Progress(Moved, DistanceBefore, DistanceNow, MinStep, PullMove)
+    if Moved < MinStep then
+        return "stuck"
+    end
+
+    if Moved >= PullMove and DistanceBefore - DistanceNow < MinStep then
+        return "pulled"
+    end
+
+    return "ok"
+end
+
 return {
     Name = "ZoneWalk",
     Dependencies = {"Config"},
+    Core = Core,
 
     Start = function(Context)
         local Config = Context.Config
@@ -25,8 +60,13 @@ return {
         --// Moving less than STUCK_DISTANCE in STUCK_SECONDS counts as stuck.
         local STUCK_SECONDS = 3
         local STUCK_DISTANCE = 1
+        --// Moving this far in STUCK_SECONDS without getting closer counts
+        --// as being walked somewhere else.
+        local PULL_DISTANCE = 6
+        --// Our walk target counts as overridden beyond this (X and Z only).
+        local HIJACK_TOLERANCE = 1
 
-        local ZoneWalk = { Name = "ZoneWalk" }
+        local ZoneWalk = { Name = "ZoneWalk", Core = Core }
 
         local function GetCharacter()
             local Character = Player.Character
@@ -108,23 +148,38 @@ return {
                 or FlatDistance(Root.Position, Info.Center) <= Config.ZONE_ARRIVE_DISTANCE
         end
 
-        --// MoveTo Target until IsDone(), stuck, or Deadline.
-        --// Returns "done", "stuck" or "timeout".
+        --// MoveTo Target until IsDone(), stuck, hijacked or Deadline.
+        --// Returns "done", "stuck", "hijacked" or "timeout".
         local function MoveStraight(Humanoid, Root, Target, IsDone, Deadline)
             local LastIssue = -math.huge
             local CheckAt, CheckPosition = os.clock() + STUCK_SECONDS, Root.Position
+            local CheckDistance = FlatDistance(Root.Position, Target)
 
             while Lifetime.Alive and os.clock() < Deadline do
                 if IsDone() then
                     return "done"
                 end
 
+                --// Checked before every reissue, so another script's
+                --// MoveTo since ours is seen before we overwrite it.
+                if LastIssue > -math.huge and Core.IsHijacked(Humanoid.WalkToPoint, Humanoid.WalkToPart, Target, HIJACK_TOLERANCE) then
+                    return "hijacked"
+                end
+
                 if os.clock() >= CheckAt then
-                    if (Root.Position - CheckPosition).Magnitude < STUCK_DISTANCE then
+                    local Distance = FlatDistance(Root.Position, Target)
+                    local Moved = (Root.Position - CheckPosition).Magnitude
+                    local Progress = Core.Progress(Moved, CheckDistance, Distance, STUCK_DISTANCE, PULL_DISTANCE)
+
+                    if Progress == "stuck" then
                         return "stuck"
                     end
 
-                    CheckAt, CheckPosition = os.clock() + STUCK_SECONDS, Root.Position
+                    if Progress == "pulled" then
+                        return "hijacked"
+                    end
+
+                    CheckAt, CheckPosition, CheckDistance = os.clock() + STUCK_SECONDS, Root.Position, Distance
                 end
 
                 if os.clock() - LastIssue >= MOVE_REISSUE then
@@ -153,6 +208,7 @@ return {
         end
 
         --// Follows a path toward the zone; stops early once arrived.
+        --// "hijacked" when something else took over the walk, else nil.
         local function FollowPath(Humanoid, Root, Info, Deadline)
             for _, Waypoint in ipairs(GetWaypoints(Root, Info.Center) or {}) do
                 if IsArrived(Info, Root) then
@@ -167,14 +223,21 @@ return {
                     return IsArrived(Info, Root) or FlatDistance(Root.Position, Waypoint.Position) <= WAYPOINT_REACHED
                 end, Deadline)
 
+                if Result == "hijacked" then
+                    return Result
+                end
+
                 if Result ~= "done" then
-                    return
+                    return nil
                 end
             end
+
+            return nil
         end
 
-        --// Walks to ZoneName. True once arrived, false and why otherwise.
-        --// Yields up to Config.ZONE_WALK_TIMEOUT.
+        --// Walks to ZoneName. True once arrived; otherwise false, why, and
+        --// "hijacked" when something else drove the character (the game's
+        --// auto). Yields up to Config.ZONE_WALK_TIMEOUT.
         function ZoneWalk.WalkTo(ZoneName)
             local _, Info = ZoneWalk.FindZone(ZoneName)
 
@@ -194,12 +257,14 @@ return {
             end
 
             local Deadline = os.clock() + Config.ZONE_WALK_TIMEOUT
-            FollowPath(Humanoid, Root, Info, Deadline)
+            local Result = FollowPath(Humanoid, Root, Info, Deadline)
 
             --// No path, or the path ran out: finish in a straight line.
-            local Result = MoveStraight(Humanoid, Root, Info.Center, function()
-                return IsArrived(Info, Root)
-            end, Deadline)
+            if Result ~= "hijacked" then
+                Result = MoveStraight(Humanoid, Root, Info.Center, function()
+                    return IsArrived(Info, Root)
+                end, Deadline)
+            end
 
             --// Stand still so the scan and the game's auto start from here.
             Humanoid:MoveTo(Root.Position)
@@ -208,7 +273,8 @@ return {
                 return true
             end
 
-            return false, string.format("%s %s, %d studs away", Result, ZoneName, math.floor(FlatDistance(Root.Position, Info.Center)))
+            local Why = string.format("%s %s, %d studs away", Result, ZoneName, math.floor(FlatDistance(Root.Position, Info.Center)))
+            return false, Why, Result
         end
 
         return ZoneWalk

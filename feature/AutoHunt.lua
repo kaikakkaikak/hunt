@@ -4,23 +4,49 @@
 --      hop at once (CamperCheck);
 --   2. walk to the selected boss's zone (Config.BOSS_ZONES) with the game's
 --      auto off; nothing below runs until arrived (walk again, or hop after
---      Config.WALK_FAILS_BEFORE_HOP failed walks);
+--      Config.WALK_FAILS_BEFORE_HOP failed walks). The game's auto taking
+--      over the walk means it was left on: it is pressed off and the walk
+--      retried, up to Config.AUTO_OFF_TRIES times without counting as failed;
 --   3. look for a selected boss, Config.SCAN_TRIES times, noting who stands
 --      near the zone meanwhile;
 --   4. found: switch the game's auto-fight on and wait until the boss is dead
 --      or gone, give Config.LOOT_WAIT_SECONDS to pick up the drops, then hop
 --      for the next one (Hop After Kill) or keep scanning; each kill is
 --      counted per boss in Settings (saved);
---   5. not found and someone camps the zone: hop;
---   6. not found: when a selected boss's timer says it spawns within
+--   5. not found: when a selected boss's timer says it spawns within
 --      Config.BOSS_WAIT_MAX_SECONDS (TARGET_WAIT_MAX_SECONDS on a server
---      joined as a spawn target), wait for it here;
+--      joined as a spawn target), wait for it here, campers or not: a boss
+--      about to spawn beats any other server. The wait follows the live
+--      timer, so a boss that shows up a little late is not missed;
+--   6. not found and someone camps the zone: hop;
 --   7. otherwise (no timer, unreadable, or too long): hop.
+-- The known-camper check on join and the retry of a failed hop also stay
+-- when the boss spawns soon.
 -- Every hop first tells ServerMemory why this server was left and when its
 -- boss spawns, so it is not hopped back to too soon, and this script is
--- queued to run again on the next server.
+-- queued to run again on the next server. A hop that fails is retried as is
+-- (no walk or scan in between), unless a selected boss is alive by then.
+local Core = {}
+
+--// The boss spawning in Seconds is worth staying for.
+function Core.SpawnsSoon(Seconds, MaxWait)
+    return Seconds ~= nil and Seconds <= MaxWait
+end
+
+--// The wait's deadline after a timer reading Left (or nil) at Now: moved
+--// to Left + BOSS_SPAWN_GRACE from now while the timer still counts, never
+--// past Cap (so a stuck timer cannot hold us forever), never earlier.
+function Core.NextDeadline(Deadline, Left, Now, Cap, Cfg)
+    if Left and Left > 0 then
+        return math.min(math.max(Deadline, Now + Left + Cfg.BOSS_SPAWN_GRACE), Cap)
+    end
+
+    return Deadline
+end
+
 return {
     Name = "AutoHunt",
+    Core = Core,
     Dependencies = {"Config", "Settings", "ServerMemory", "ServerHop", "BossFinder", "BossTimer", "ZoneWalk", "GameAuto", "CamperCheck"},
 
     Start = function(Context)
@@ -52,6 +78,11 @@ return {
                 JoinChecked = false,
                 --// This server was joined as a spawn target: wait longer.
                 Expected = false,
+                --// The game's auto pressed off this server after it took
+                --// over a walk.
+                AutoOffs = 0,
+                --// A hop that failed, to retry: { Reason, Detail }, or nil.
+                PendingHop = nil,
             },
         }
 
@@ -134,23 +165,43 @@ return {
             return nil
         end
 
+        local function GetMaxWait()
+            return S.Expected and Config.TARGET_WAIT_MAX_SECONDS or Config.BOSS_WAIT_MAX_SECONDS
+        end
+
+        --// The soonest selected boss's seconds and name when it spawns
+        --// within the wait allowed here, or nil.
+        local function SoonestSpawn()
+            local Seconds, Name = BossTimer.GetSoonest(Data.Selected)
+
+            if Core.SpawnsSoon(Seconds, GetMaxWait()) then
+                return Seconds, Name
+            end
+
+            return nil
+        end
+
         --// Waits here when the soonest selected boss spawns within
         --// BOSS_WAIT_MAX_SECONDS (TARGET_WAIT_MAX_SECONDS on a spawn target).
         --// The boss when it showed up, or nil, the ServerMemory reason to
         --// hop and a description.
         local function WaitForSpawn()
             local Seconds, Name = BossTimer.GetSoonest(Data.Selected)
-            local MaxWait = S.Expected and Config.TARGET_WAIT_MAX_SECONDS or Config.BOSS_WAIT_MAX_SECONDS
+            local MaxWait = GetMaxWait()
 
             if not Seconds then
                 return nil, "NO_TIMER", "no readable timer"
             end
 
-            if Seconds > MaxWait then
+            if not Core.SpawnsSoon(Seconds, MaxWait) then
                 return nil, "FAR", string.format("%s in %ds (> %ds)", Name, math.floor(Seconds), MaxWait)
             end
 
-            local Deadline = os.clock() + Seconds + Config.BOSS_SPAWN_GRACE
+            print(string.format("[AutoHunt] %s spawns in %ds, waiting", Name, math.floor(Seconds)))
+
+            local Now = os.clock()
+            local Cap = Now + MaxWait + Config.BOSS_SPAWN_GRACE
+            local Deadline = Core.NextDeadline(Now, Seconds, Now, Cap, Config)
 
             while IsActive() and os.clock() < Deadline do
                 local Boss = BossFinder.Find(Data.Selected)
@@ -160,6 +211,7 @@ return {
                 end
 
                 local Left = BossTimer.GetSeconds(Name)
+                Deadline = Core.NextDeadline(Deadline, Left, os.clock(), Cap, Config)
                 SetStatus(string.format("WAITING  %s  //  %s s", Name, Left and tostring(math.floor(Left)) or "?"))
                 task.wait(Config.WATCH_INTERVAL)
             end
@@ -210,17 +262,72 @@ return {
             return false
         end
 
-        --// Keeps the game's auto on during a fight: retries a press that
-        --// failed (button not on screen yet right after the walk), and
-        --// presses again when the boss stops taking damage for
-        --// AUTO_STALL_SECONDS (the game turned its auto off). Only after
-        --// damage was seen this fight: a health we cannot read never drops,
-        --// and pressing on that would toggle auto off and on forever.
+        --// Where our character stands, faces and walks to, or nil.
+        local function ReadPose()
+            local Character = Context.Player.Character
+            local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+            local Root = Character and Character:FindFirstChild("HumanoidRootPart")
+
+            if not Humanoid or not Root then
+                return nil
+            end
+
+            return { Position = Root.Position, Look = Root.CFrame.LookVector, WalkTo = Humanoid.WalkToPoint }
+        end
+
+        local function FlatDistance(A, B)
+            return Vector3.new(A.X - B.X, 0, A.Z - B.Z).Magnitude
+        end
+
+        --// Our character moved, turned or got a new walk target since
+        --// Before: something (the game's auto) is driving it.
+        local function PoseChanged(Before, Now)
+            if not Before or not Now then
+                return false
+            end
+
+            return FlatDistance(Before.Position, Now.Position) >= Config.AUTO_ACTIVE_MOVE
+                or FlatDistance(Before.WalkTo, Now.WalkTo) > 1
+                or Before.Look:Dot(Now.Look) < 0.95
+        end
+
+        --// Keeps the game's auto on during a fight:
+        --//   - retries a press that failed (button not on screen yet);
+        --//   - checks every press (GameAuto.Core.NextCheck): no movement,
+        --//     turn or damage within AUTO_CONFIRM_SECONDS means the press
+        --//     turned auto off (it was on already), so press again;
+        --//   - presses again when the boss stops taking damage for
+        --//     AUTO_STALL_SECONDS (the game turned its auto off). Only after
+        --//     damage was seen: a health we cannot read never drops.
         local function NewAutoKeeper(Boss)
             local LastHealths = ReadHealths(Boss)
             local LastDamageAt = os.clock()
             local SawDamage = false
             local Warned = false
+            --// The press being checked: { Since, Presses, Pose }, or nil.
+            local Check = nil
+
+            local function StartCheck(Presses)
+                Check = { Since = os.clock(), Presses = Presses, Pose = ReadPose() }
+            end
+
+            local function Confirm(Damaged)
+                if not Check then
+                    return
+                end
+
+                local Active = Damaged or PoseChanged(Check.Pose, ReadPose())
+                local Action = GameAuto.Core.NextCheck(Check, Active, os.clock(), Config)
+
+                if Action == "press" then
+                    print(string.format("[AutoHunt] Auto shows no effect, pressing again (%d / %d)", Check.Presses + 1, Config.AUTO_CONFIRM_TRIES))
+                    GameAuto:Repress()
+                    StartCheck(Check.Presses + 1)
+                    LastDamageAt = os.clock()
+                elseif Action ~= "wait" then
+                    Check = nil
+                end
+            end
 
             return function()
                 if not GameAuto:IsEnabled() then
@@ -231,22 +338,29 @@ return {
                         NotifyAction("AUTO HUNT", "Auto mode: " .. tostring(Error) .. ", retrying", 6)
                     end
 
+                    if Enabled then
+                        StartCheck(0)
+                    end
+
                     LastDamageAt = os.clock()
                     return
                 end
 
                 local Healths = ReadHealths(Boss)
+                local Damaged = TookDamage(LastHealths, Healths)
 
-                if TookDamage(LastHealths, Healths) then
+                if Damaged then
                     SawDamage = true
                     LastDamageAt = os.clock()
                 end
 
                 LastHealths = Healths
+                Confirm(Damaged)
 
-                if SawDamage and os.clock() - LastDamageAt >= Config.AUTO_STALL_SECONDS then
+                if not Check and SawDamage and os.clock() - LastDamageAt >= Config.AUTO_STALL_SECONDS then
                     print("[AutoHunt] " .. Boss.Name .. " stopped taking damage, pressing auto again")
                     GameAuto:Repress()
+                    StartCheck(0)
                     SawDamage = false
                     LastDamageAt = os.clock()
                 end
@@ -297,6 +411,7 @@ return {
         --// Waits for one hop attempt to leave or fail. Yields.
         local function Hop(Reason, Detail)
             print("[AutoHunt] Hopping: " .. Reason .. (Detail and ", " .. Detail or ""))
+            S.PendingHop = nil
             Remember(Reason)
 
             ServerHop:Hop()
@@ -314,8 +429,10 @@ return {
             end
 
             --// Still here: the hop failed. Try again after a pause, with the
-            --// spawn target's longer wait over.
+            --// spawn target's longer wait over, and without scanning again
+            --// for a boss that was just killed or is not here.
             S.Expected = false
+            S.PendingHop = { Reason = Reason, Detail = Detail }
             SetStatus("HOP FAILED  //  " .. ServerHop:GetStatus())
             task.wait(ServerHop:GetRetryDelay())
         end
@@ -334,6 +451,13 @@ return {
                 return false
             end
 
+            local Seconds, Name = SoonestSpawn()
+
+            if Seconds then
+                print(string.format("[AutoHunt] Known camper %s here, but %s spawns in %ds: staying", Camper, Name, math.floor(Seconds)))
+                return false
+            end
+
             NotifyAction("AUTO HUNT", Camper .. " camps " .. Zone .. " here, hopping", 5)
             Hop("CAMPED", "known camper " .. Camper)
             return true
@@ -347,11 +471,21 @@ return {
             GameAuto:Disable()
             SetStatus("WALKING TO  " .. Zone)
 
-            local Arrived, WalkError = ZoneWalk.WalkTo(Zone)
+            local Arrived, WalkError, Kind = ZoneWalk.WalkTo(Zone)
 
             if Arrived or not IsActive() then
                 S.WalkFails = Arrived and 0 or S.WalkFails
                 return Arrived
+            end
+
+            --// Something else drove the character: the game's auto was on
+            --// (left on before the hop) although we thought it off.
+            if Kind == "hijacked" and S.AutoOffs < Config.AUTO_OFF_TRIES then
+                S.AutoOffs += 1
+                print(string.format("[AutoHunt] The game's auto took over the walk, pressing it off (%d / %d)", S.AutoOffs, Config.AUTO_OFF_TRIES))
+                NotifyAction("AUTO HUNT", "Game auto was on, turning it off", 4)
+                GameAuto:ForceOff()
+                return false
             end
 
             S.WalkFails += 1
@@ -393,9 +527,10 @@ return {
                 return
             end
 
-            --// A spawn target was joined to wait for its boss: others waiting
-            --// for the same spawn are not a reason to leave.
-            local Campers = S.Expected and {} or CamperCheck:Finish(Snapshot)
+            --// Campers only matter when the boss is not about to spawn:
+            --// others waiting for the same spawn are no reason to lose it.
+            --// A spawn target was joined to wait for its boss anyway.
+            local Campers = (S.Expected or SoonestSpawn()) and {} or CamperCheck:Finish(Snapshot)
 
             if IsActive() and #Campers > 0 then
                 NotifyAction("AUTO HUNT", "Campers at " .. Zone .. ": " .. CamperCheck.Core.Names(Campers), 5)
@@ -421,8 +556,27 @@ return {
             end
         end
 
+        --// Retries a hop that failed, unless a selected boss is alive now or
+        --// spawns soon. True when it did.
+        local function RetryPendingHop()
+            local Pending = S.PendingHop
+
+            if not Pending then
+                return false
+            end
+
+            if BossFinder.Find(Data.Selected) or SoonestSpawn() then
+                S.PendingHop = nil
+                return false
+            end
+
+            Hop(Pending.Reason, Pending.Detail)
+            return true
+        end
+
         local function Step()
             if not Data.Running then
+                S.PendingHop = nil
                 SetStatus("STOPPED")
                 return
             end
@@ -440,7 +594,7 @@ return {
                 return
             end
 
-            if LeaveKnownCamper(Zone) or not ReachZone(Zone) or not IsActive() then
+            if RetryPendingHop() or LeaveKnownCamper(Zone) or not ReachZone(Zone) or not IsActive() then
                 return
             end
 

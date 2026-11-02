@@ -14,6 +14,9 @@ local Memory = LoadSpec("feature/ServerMemory.lua").Core
 local Hop = LoadSpec("feature/ServerHop.lua").Core
 local Camper = LoadSpec("feature/CamperCheck.lua").Core
 local SettingsCore = LoadSpec("feature/Settings.lua").Core
+local Walk = LoadSpec("feature/ZoneWalk.lua").Core
+local AutoCore = LoadSpec("feature/GameAuto.lua").Core
+local HuntCore = LoadSpec("feature/AutoHunt.lua").Core
 
 local Passed, Failed = 0, 0
 
@@ -385,6 +388,52 @@ Test("CleanKills keeps whole non-negative counts by boss name only", function()
     Equal(Kills.D, nil, "string")
     Equal(Kills[1], nil, "number key")
     Equal(next(SettingsCore.CleanKills("bad")), nil, "not a table")
+end)
+
+Test("IsHijacked: our own walk target is not a takeover", function()
+    local Target = { X = 10, Z = 20 }
+
+    Equal(Walk.IsHijacked({ X = 10.5, Z = 20 }, nil, Target, 1), false, "same point")
+    Equal(Walk.IsHijacked({ X = 30, Z = 20 }, nil, Target, 1), true, "moved to a monster")
+    Equal(Walk.IsHijacked({ X = 10, Z = 20 }, {}, Target, 1), true, "walks to a part")
+end)
+
+Test("Progress tells stuck, pulled away and walking apart", function()
+    Equal(Walk.Progress(0.5, 50, 50, 1, 6), "stuck", "standing still")
+    Equal(Walk.Progress(20, 50, 30, 1, 6), "ok", "walking closer")
+    Equal(Walk.Progress(20, 50, 55, 1, 6), "pulled", "walking away")
+    Equal(Walk.Progress(3, 50, 50, 1, 6), "ok", "sliding along a wall")
+end)
+
+Test("NextCheck presses again only after a quiet window, at most AUTO_CONFIRM_TRIES times", function()
+    local Window = Cfg.AUTO_CONFIRM_SECONDS
+
+    Equal(AutoCore.NextCheck({ Since = 0, Presses = 0 }, true, Window + 1, Cfg), "ok", "auto working")
+    Equal(AutoCore.NextCheck({ Since = 0, Presses = 0 }, false, Window - 1, Cfg), "wait", "still in window")
+    Equal(AutoCore.NextCheck({ Since = 0, Presses = 0 }, false, Window, Cfg), "press", "quiet window")
+    Equal(AutoCore.NextCheck({ Since = 0, Presses = Cfg.AUTO_CONFIRM_TRIES }, false, Window, Cfg), "giveup", "out of tries")
+end)
+
+Test("AUTO_CONFIRM_TRIES is even, so re-presses end where the first press aimed", function()
+    Equal(Cfg.AUTO_CONFIRM_TRIES % 2, 0, "even")
+end)
+
+Test("SpawnsSoon stays for a boss within the wait, not for an unknown or far one", function()
+    Equal(HuntCore.SpawnsSoon(10, 30), true, "10s")
+    Equal(HuntCore.SpawnsSoon(0, 30), true, "now")
+    Equal(HuntCore.SpawnsSoon(31, 30), false, "far")
+    Equal(HuntCore.SpawnsSoon(nil, 30), false, "unreadable")
+end)
+
+Test("NextDeadline follows the live timer, within the cap", function()
+    local Grace = Cfg.BOSS_SPAWN_GRACE
+
+    Equal(HuntCore.NextDeadline(0, 10, 0, 100, Cfg), 10 + Grace, "first reading")
+    Equal(HuntCore.NextDeadline(10 + Grace, 15, 5, 100, Cfg), 20 + Grace, "timer ran slow: later")
+    Equal(HuntCore.NextDeadline(50, 5, 5, 100, Cfg), 50, "never earlier")
+    Equal(HuntCore.NextDeadline(50, 0, 45, 100, Cfg), 50, "timer at zero: grace left as is")
+    Equal(HuntCore.NextDeadline(50, nil, 45, 100, Cfg), 50, "unreadable")
+    Equal(HuntCore.NextDeadline(50, 500, 45, 100, Cfg), 100, "capped")
 end)
 
 print(string.format("%d passed, %d failed", Passed, Failed))
