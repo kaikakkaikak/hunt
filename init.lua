@@ -4,7 +4,7 @@
 
 --// Bump on every push: shown on load and in the window title, so an old
 --// copy (cache, local files) is easy to spot.
-local VERSION = "0.8.2"
+local VERSION = "0.9.0"
 local TITLE = "AUTO HUNT v" .. VERSION
 
 --// Where features are read from: GitHub by default. Set
@@ -26,6 +26,8 @@ local FETCH_RETRIES = 2
 --// Every feature, in start order (dependencies still start first).
 local MODULES = {
     "feature/Config.lua",
+    --// Early, so the console panel has the load's output too.
+    "feature/Console.lua",
     "feature/Settings.lua",
     "feature/GuiClick.lua",
     "feature/ServerMemory.lua",
@@ -36,6 +38,8 @@ local MODULES = {
     "feature/GameAuto.lua",
     "feature/CamperCheck.lua",
     "feature/AutoHunt.lua",
+    "feature/Widgets.lua",
+    "feature/ConsolePanel.lua",
     "feature/UI.lua",
 }
 

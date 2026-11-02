@@ -1,82 +1,34 @@
--- UI is a small draggable window: tick the bosses to hunt, Start / Stop,
--- Hop After Kill, Hop Now, and the current status. Each boss shows how many
--- times it was killed.
+-- UI is a small draggable window: pick the boss to hunt, Start / Stop,
+-- Hop After Kill, Hop Now, Console, and the current status. Each boss shows
+-- how many times it was killed.
+--
+-- The "-" button shrinks it to a bar with only the selected boss, its
+-- kills and Play / Stop ("+" opens it again); the choice is saved, so it
+-- stays small across hops.
 return {
     Name = "UI",
-    Dependencies = {"Config", "Settings", "AutoHunt"},
+    Dependencies = {"Config", "Settings", "AutoHunt", "Widgets", "ConsolePanel"},
 
     Start = function(Context)
         local Config = Context.Config
         local Settings = Context.Settings
         local AutoHunt = Context.AutoHunt
+        local Widgets = Context.Widgets
+        local ConsolePanel = Context.ConsolePanel
         local Lifetime = Context.Lifetime
-        local Player = Context.Player
-        local UserInputService = game:GetService("UserInputService")
+        local Create = Widgets.Create
+        local COLOR = Widgets.COLOR
 
         local GUI_NAME = "AutoHuntUI"
         local WIDTH = 240
-        local ROW_HEIGHT = 26
+        local COMPACT_WIDTH = 220
+        local SMALL_BUTTON = 26
         local LIST_HEIGHT = 150
         local STATUS_REFRESH = 0.25
 
-        local COLOR = {
-            Window = Color3.fromRGB(24, 24, 28),
-            Row = Color3.fromRGB(38, 38, 44),
-            On = Color3.fromRGB(46, 160, 90),
-            Off = Color3.fromRGB(170, 60, 60),
-            Text = Color3.fromRGB(235, 235, 235),
-            Dim = Color3.fromRGB(150, 150, 160),
-        }
-
         local Data = Settings.Data
 
-        local function GetParent()
-            if type(gethui) == "function" then
-                local Ok, Hui = pcall(gethui)
-
-                if Ok and Hui then
-                    return Hui
-                end
-            end
-
-            return Player:WaitForChild("PlayerGui")
-        end
-
-        local function Create(ClassName, Properties)
-            local Object = Instance.new(ClassName)
-
-            for Key, Value in pairs(Properties) do
-                if Key ~= "Parent" then
-                    Object[Key] = Value
-                end
-            end
-
-            Object.Parent = Properties.Parent
-            return Object
-        end
-
-        local function Corner(Parent)
-            Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = Parent })
-        end
-
-        local function MakeButton(Parent, Text, Order)
-            local Button = Create("TextButton", {
-                Size = UDim2.new(1, 0, 0, ROW_HEIGHT),
-                BackgroundColor3 = COLOR.Row,
-                TextColor3 = COLOR.Text,
-                Font = Enum.Font.GothamMedium,
-                TextSize = 13,
-                Text = Text,
-                AutoButtonColor = true,
-                LayoutOrder = Order,
-                Parent = Parent,
-            })
-
-            Corner(Button)
-            return Button
-        end
-
-        local Old = GetParent():FindFirstChild(GUI_NAME)
+        local Old = Widgets.GetParent():FindFirstChild(GUI_NAME)
 
         if Old then
             Old:Destroy()
@@ -86,12 +38,43 @@ return {
             Name = GUI_NAME,
             ResetOnSpawn = false,
             ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-            Parent = GetParent(),
+            Parent = Widgets.GetParent(),
         })
 
         Lifetime.OnEnd(function()
             Gui:Destroy()
         end)
+
+        --// A row of Height laid out left to right.
+        local function Row(Parent, Height, Order)
+            local Frame = Create("Frame", {
+                Size = UDim2.new(1, 0, 0, Height),
+                BackgroundTransparency = 1,
+                LayoutOrder = Order or 0,
+                Parent = Parent,
+            })
+
+            Create("UIListLayout", {
+                FillDirection = Enum.FillDirection.Horizontal,
+                Padding = UDim.new(0, 4),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+                VerticalAlignment = Enum.VerticalAlignment.Center,
+                Parent = Frame,
+            })
+
+            return Frame
+        end
+
+        local function Label(Parent, Properties)
+            Properties.BackgroundTransparency = 1
+            Properties.TextXAlignment = Properties.TextXAlignment or Enum.TextXAlignment.Left
+            Properties.Parent = Parent
+            return Create("TextLabel", Properties)
+        end
+
+        ------------------------------------------------------------------------
+        --// Full window
+        ------------------------------------------------------------------------
 
         local Window = Create("Frame", {
             Size = UDim2.new(0, WIDTH, 0, 0),
@@ -101,68 +84,42 @@ return {
             Parent = Gui,
         })
 
-        Corner(Window)
-        Create("UIPadding", {
-            PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8),
-            PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8),
-            Parent = Window,
-        })
+        Widgets.Corner(Window)
+        Widgets.Padding(Window, 8)
         Create("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = Window })
 
-        local Title = Create("TextLabel", {
-            Size = UDim2.new(1, 0, 0, 20),
-            BackgroundTransparency = 1,
+        local TitleBar = Row(Window, 22, 1)
+
+        local Title = Label(TitleBar, {
+            Size = UDim2.new(1, -(SMALL_BUTTON + 4), 1, 0),
             TextColor3 = COLOR.Text,
             Font = Enum.Font.GothamBold,
             TextSize = 15,
-            TextXAlignment = Enum.TextXAlignment.Left,
             Text = Context.Title or "AUTO HUNT",
             LayoutOrder = 1,
-            Parent = Window,
         })
 
-        local Status = Create("TextLabel", {
+        local Shrink = Widgets.Button(TitleBar, "-", 2, UDim2.fromOffset(SMALL_BUTTON, 22))
+
+        local Status = Label(Window, {
             Size = UDim2.new(1, 0, 0, 32),
-            BackgroundTransparency = 1,
             TextColor3 = COLOR.Dim,
             Font = Enum.Font.Gotham,
             TextSize = 12,
             TextWrapped = true,
-            TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Top,
             LayoutOrder = 2,
-            Parent = Window,
         })
 
         --// Kills of the selected boss and of all bosses, kept across
         --// hops and game sessions by Settings.
-        local KillsLabel = Create("TextLabel", {
+        local KillsLabel = Label(Window, {
             Size = UDim2.new(1, 0, 0, 18),
-            BackgroundTransparency = 1,
             TextColor3 = COLOR.Text,
             Font = Enum.Font.GothamMedium,
             TextSize = 13,
-            TextXAlignment = Enum.TextXAlignment.Left,
             LayoutOrder = 3,
-            Parent = Window,
         })
-
-        local function PaintKills()
-            local Total = 0
-
-            for _, Count in pairs(Data.Kills) do
-                Total += Count
-            end
-
-            local Selected = Settings:GetSelected()
-            local Text = string.format("KILLS TOTAL: %d", Total)
-
-            if Selected then
-                Text = string.format("KILLS: %s %d  //  TOTAL %d", Selected, Settings:GetKills(Selected), Total)
-            end
-
-            KillsLabel.Text = Text
-        end
 
         local List = Create("ScrollingFrame", {
             Size = UDim2.new(1, 0, 0, LIST_HEIGHT),
@@ -177,9 +134,61 @@ return {
 
         Create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = List })
 
+        local HopAfterKill = Widgets.Button(Window, "", 5)
+        local RunButton = Widgets.Button(Window, "", 6)
+        local HopNow = Widgets.Button(Window, "HOP NOW", 7)
+        local ConsoleButton = Widgets.Button(Window, "CONSOLE", 8)
+
         ------------------------------------------------------------------------
-        --// Boss list
+        --// Compact bar: boss, kills, Play / Stop
         ------------------------------------------------------------------------
+
+        local Compact = Create("Frame", {
+            Size = UDim2.fromOffset(COMPACT_WIDTH, SMALL_BUTTON + 12),
+            BackgroundColor3 = COLOR.Window,
+            Visible = false,
+            Parent = Gui,
+        })
+
+        Widgets.Corner(Compact)
+        Widgets.Padding(Compact, 6)
+
+        local CompactRow = Row(Compact, SMALL_BUTTON)
+        CompactRow.Size = UDim2.fromScale(1, 1)
+
+        local CompactLabel = Label(CompactRow, {
+            Size = UDim2.new(1, -(52 + SMALL_BUTTON + 8), 1, 0),
+            TextColor3 = COLOR.Text,
+            Font = Enum.Font.GothamMedium,
+            TextSize = 13,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            LayoutOrder = 1,
+        })
+
+        local CompactRun = Widgets.Button(CompactRow, "", 2, UDim2.fromOffset(52, SMALL_BUTTON))
+        local Grow = Widgets.Button(CompactRow, "+", 3, UDim2.fromOffset(SMALL_BUTTON, SMALL_BUTTON))
+
+        ------------------------------------------------------------------------
+        --// Painting
+        ------------------------------------------------------------------------
+
+        local function PaintKills()
+            local Total = 0
+
+            for _, Count in pairs(Data.Kills) do
+                Total += Count
+            end
+
+            local Selected = Settings:GetSelected()
+
+            if Selected then
+                KillsLabel.Text = string.format("KILLS: %s %d  //  TOTAL %d", Selected, Settings:GetKills(Selected), Total)
+                CompactLabel.Text = string.format("%s : %d", Selected, Settings:GetKills(Selected))
+            else
+                KillsLabel.Text = string.format("KILLS TOTAL: %d", Total)
+                CompactLabel.Text = "NO BOSS SELECTED"
+            end
+        end
 
         local function PaintBoss(Button, Name)
             local Selected = Data.Selected[Name] == true
@@ -196,10 +205,40 @@ return {
             end
         end
 
+        local function PaintControls()
+            HopAfterKill.Text = "HOP AFTER KILL: " .. (Data.HopAfterKill and "ON" or "OFF")
+            RunButton.Text = Data.Running and "STOP" or "START"
+            CompactRun.Text = Data.Running and "STOP" or "PLAY"
+
+            for _, Button in ipairs({ RunButton, CompactRun }) do
+                Button.BackgroundColor3 = Data.Running and COLOR.Off or COLOR.On
+            end
+        end
+
+        --// Shows the full window or the compact bar, at the same spot.
+        local function ApplySize()
+            local From, To = Window, Compact
+
+            if not Data.Compact then
+                From, To = Compact, Window
+            end
+
+            if From.Visible then
+                To.Position = From.Position
+            end
+
+            From.Visible = false
+            To.Visible = true
+        end
+
+        ------------------------------------------------------------------------
+        --// Input
+        ------------------------------------------------------------------------
+
         --// Only one boss at a time: picking one drops the other, picking
         --// the selected one again clears it.
         for Index, Name in ipairs(Config.BOSS_NAMES) do
-            local Button = MakeButton(List, "", Index)
+            local Button = Widgets.Button(List, "", Index)
             Button.TextXAlignment = Enum.TextXAlignment.Left
             Create("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = Button })
             BossButtons[Name] = Button
@@ -208,23 +247,8 @@ return {
                 Settings:Select(Settings:GetSelected() ~= Name and Name or nil)
                 Settings:Save()
                 PaintAllBosses()
+                PaintKills()
             end)
-        end
-
-        PaintAllBosses()
-
-        ------------------------------------------------------------------------
-        --// Controls
-        ------------------------------------------------------------------------
-
-        local HopAfterKill = MakeButton(Window, "", 5)
-        local RunButton = MakeButton(Window, "", 6)
-        local HopNow = MakeButton(Window, "HOP NOW", 7)
-
-        local function PaintControls()
-            HopAfterKill.Text = "HOP AFTER KILL: " .. (Data.HopAfterKill and "ON" or "OFF")
-            RunButton.Text = Data.Running and "STOP" or "START"
-            RunButton.BackgroundColor3 = Data.Running and COLOR.Off or COLOR.On
         end
 
         Lifetime.Connect(HopAfterKill.Activated, function()
@@ -233,51 +257,45 @@ return {
             PaintControls()
         end)
 
-        Lifetime.Connect(RunButton.Activated, function()
-            AutoHunt:SetRunning(not Data.Running)
-            PaintControls()
-        end)
+        for _, Button in ipairs({ RunButton, CompactRun }) do
+            Lifetime.Connect(Button.Activated, function()
+                AutoHunt:SetRunning(not Data.Running)
+                PaintControls()
+            end)
+        end
 
         Lifetime.Connect(HopNow.Activated, function()
             AutoHunt:HopNow()
         end)
 
+        Lifetime.Connect(ConsoleButton.Activated, function()
+            ConsolePanel:Toggle()
+        end)
+
+        for _, Button in ipairs({ Shrink, Grow }) do
+            Lifetime.Connect(Button.Activated, function()
+                Data.Compact = Button == Shrink
+                Settings:Save()
+                ApplySize()
+            end)
+        end
+
+        Widgets.Draggable(Title, Window)
+        Widgets.Draggable(CompactLabel, Compact)
+
+        Compact.Position = Window.Position
+        PaintAllBosses()
+        PaintKills()
         PaintControls()
-
-        ------------------------------------------------------------------------
-        --// Dragging by the title
-        ------------------------------------------------------------------------
-
-        local DragStart, StartPosition
-
-        Lifetime.Connect(Title.InputBegan, function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                DragStart = Input.Position
-                StartPosition = Window.Position
-            end
-        end)
-
-        Title.Active = true
-
-        Lifetime.Connect(UserInputService.InputChanged, function(Input)
-            if DragStart and (Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch) then
-                local Delta = Input.Position - DragStart
-                Window.Position = StartPosition + UDim2.fromOffset(Delta.X, Delta.Y)
-            end
-        end)
-
-        Lifetime.Connect(UserInputService.InputEnded, function(Input)
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                DragStart = nil
-            end
-        end)
+        ApplySize()
 
         task.spawn(function()
             while Lifetime.Alive do
                 Status.Text = "STATUS: " .. AutoHunt:GetStatus()
-                --// Picks up new kill counts.
+                --// Picks up new kill counts and a Stop from elsewhere.
                 PaintAllBosses()
                 PaintKills()
+                PaintControls()
                 task.wait(STATUS_REFRESH)
             end
         end)

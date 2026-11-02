@@ -49,6 +49,8 @@ return {
                 HopAfterKill = true,
                 --// Boss name -> how many times it was killed.
                 Kills = {},
+                --// The UI is shrunk to its compact bar.
+                Compact = false,
             },
         }
 
@@ -83,6 +85,10 @@ return {
 
             if type(Saved.HopAfterKill) == "boolean" then
                 Data.HopAfterKill = Saved.HopAfterKill
+            end
+
+            if type(Saved.Compact) == "boolean" then
+                Data.Compact = Saved.Compact
             end
 
             if Saved.Kills ~= nil then

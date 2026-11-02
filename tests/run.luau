@@ -17,6 +17,7 @@ local SettingsCore = LoadSpec("feature/Settings.lua").Core
 local Walk = LoadSpec("feature/ZoneWalk.lua").Core
 local AutoCore = LoadSpec("feature/GameAuto.lua").Core
 local HuntCore = LoadSpec("feature/AutoHunt.lua").Core
+local ConsoleCore = LoadSpec("feature/Console.lua").Core
 
 local Passed, Failed = 0, 0
 
@@ -434,6 +435,38 @@ Test("NextDeadline follows the live timer, within the cap", function()
     Equal(HuntCore.NextDeadline(50, 0, 45, 100, Cfg), 50, "timer at zero: grace left as is")
     Equal(HuntCore.NextDeadline(50, nil, 45, 100, Cfg), 50, "unreadable")
     Equal(HuntCore.NextDeadline(50, 500, 45, 100, Cfg), 100, "capped")
+end)
+
+Test("Console Push keeps the newest lines and leaves the old list alone", function()
+    local Lines = {}
+
+    for Index = 1, 5 do
+        Lines = ConsoleCore.Push(Lines, Index, 3)
+    end
+
+    Equal(#Lines, 3, "count")
+    Equal(Lines[1], 3, "oldest kept")
+    Equal(Lines[3], 5, "newest")
+
+    local Before = { 1, 2 }
+    local After = ConsoleCore.Push(Before, 3, 3)
+    Equal(#Before, 2, "old list")
+    Equal(#After, 3, "new list")
+end)
+
+Test("Console shows our lines, warnings and errors; all when asked", function()
+    local Ours = { Text = "[AutoHunt] Hopping: KILLED", Kind = "info" }
+    local Game = { Text = "some game print", Kind = "info" }
+    local Warn = { Text = "something", Kind = "warn" }
+
+    Equal(ConsoleCore.IsShown(Ours, true), true, "ours")
+    Equal(ConsoleCore.IsShown(Game, true), false, "game print")
+    Equal(ConsoleCore.IsShown(Warn, true), true, "warning")
+    Equal(ConsoleCore.IsShown(Game, false), true, "all")
+end)
+
+Test("Console Escape makes text safe for RichText", function()
+    Equal(ConsoleCore.Escape("<b>&\"'"), "&lt;b&gt;&amp;&quot;&apos;", "escaped")
 end)
 
 print(string.format("%d passed, %d failed", Passed, Failed))
