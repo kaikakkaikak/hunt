@@ -13,6 +13,7 @@ local Cfg = LoadSpec("feature/Config.lua").Start()
 local Memory = LoadSpec("feature/ServerMemory.lua").Core
 local Hop = LoadSpec("feature/ServerHop.lua").Core
 local Camper = LoadSpec("feature/CamperCheck.lua").Core
+local SettingsCore = LoadSpec("feature/Settings.lua").Core
 
 local Passed, Failed = 0, 0
 
@@ -359,6 +360,31 @@ Test("FindCampers keeps those who stayed and barely moved", function()
     Equal(Campers[1].Name, "Afk", "name")
     Equal(Campers[1].UserId, "1", "user id")
     Equal(Camper.Names({ { Name = "A" }, { Name = "B" } }), "A, B", "names")
+end)
+
+------------------------------------------------------------------------
+--// Settings.Core (kill counts)
+------------------------------------------------------------------------
+
+Test("AddKill counts per boss without changing the old table", function()
+    local Before = { A = 2 }
+    local After = SettingsCore.AddKill(SettingsCore.AddKill(Before, "A"), "B")
+
+    Equal(After.A, 3, "A")
+    Equal(After.B, 1, "B")
+    Equal(Before.A, 2, "old A")
+    Equal(Before.B, nil, "old B")
+end)
+
+Test("CleanKills keeps whole non-negative counts by boss name only", function()
+    local Kills = SettingsCore.CleanKills({ A = 4, B = -1, C = 2.5, D = "7", [1] = 3 })
+
+    Equal(Kills.A, 4, "A")
+    Equal(Kills.B, nil, "negative")
+    Equal(Kills.C, nil, "fraction")
+    Equal(Kills.D, nil, "string")
+    Equal(Kills[1], nil, "number key")
+    Equal(next(SettingsCore.CleanKills("bad")), nil, "not a table")
 end)
 
 print(string.format("%d passed, %d failed", Passed, Failed))

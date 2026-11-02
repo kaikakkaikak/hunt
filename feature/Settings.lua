@@ -1,10 +1,39 @@
 -- Settings keeps what the player chose (selected bosses, running, hop after
 -- kill) across hops: saved to a file with writefile, and handed to the next
 -- server through getgenv().AutoHuntResume by AutoHunt's queued reload, for
--- executors without file access.
+-- executors without file access. Also counts the bosses killed, per boss.
+
+--// Pure helpers, tested in tests/run.luau.
+local Core = {}
+
+--// Kills (boss name -> count) with one more for Name, as a new table.
+function Core.AddKill(Kills, Name)
+    local Copy = table.clone(Kills)
+    Copy[Name] = (Copy[Name] or 0) + 1
+    return Copy
+end
+
+--// Only the boss name -> whole, non-negative count pairs of a save.
+function Core.CleanKills(Saved)
+    local Kills = {}
+
+    if type(Saved) ~= "table" then
+        return Kills
+    end
+
+    for Name, Count in pairs(Saved) do
+        if type(Name) == "string" and type(Count) == "number" and Count >= 0 and Count % 1 == 0 then
+            Kills[Name] = Count
+        end
+    end
+
+    return Kills
+end
+
 return {
     Name = "Settings",
     Dependencies = {},
+    Core = Core,
 
     Start = function(Context)
         local HttpService = Context.Services.HttpService
@@ -18,6 +47,8 @@ return {
                 Selected = {},
                 Running = false,
                 HopAfterKill = true,
+                --// Boss name -> how many times it was killed.
+                Kills = {},
             },
         }
 
@@ -53,6 +84,10 @@ return {
             if type(Saved.HopAfterKill) == "boolean" then
                 Data.HopAfterKill = Saved.HopAfterKill
             end
+
+            if Saved.Kills ~= nil then
+                Data.Kills = Core.CleanKills(Saved.Kills)
+            end
         end
 
         local function Decode(Text)
@@ -67,8 +102,17 @@ return {
             return HttpService:JSONEncode(Data)
         end
 
+        local WarnedNoFile = false
+
         function Settings:Save()
             if type(writefile) ~= "function" then
+                --// Hops still carry everything, but a new game session
+                --// starts over: say so once.
+                if not WarnedNoFile then
+                    WarnedNoFile = true
+                    Context.NotifyAction("AUTO HUNT", "No writefile: kill counts reset when the game is closed", 8)
+                end
+
                 return
             end
 
@@ -124,6 +168,17 @@ return {
         --// Selects only Name; nil clears the selection.
         function Settings:Select(Name)
             Data.Selected = Name and { [Name] = true } or {}
+        end
+
+        --// Counts one kill of Name and saves. The new count.
+        function Settings:AddKill(Name)
+            Data.Kills = Core.AddKill(Data.Kills, Name)
+            Settings:Save()
+            return Data.Kills[Name]
+        end
+
+        function Settings:GetKills(Name)
+            return Data.Kills[Name] or 0
         end
 
         function Settings:SelectedNames()

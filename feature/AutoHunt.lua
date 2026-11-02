@@ -9,7 +9,8 @@
 --      near the zone meanwhile;
 --   4. found: switch the game's auto-fight on and wait until the boss is dead
 --      or gone, give Config.LOOT_WAIT_SECONDS to pick up the drops, then hop
---      for the next one (Hop After Kill) or keep scanning;
+--      for the next one (Hop After Kill) or keep scanning; each kill is
+--      counted per boss in Settings (saved);
 --   5. not found and someone camps the zone: hop;
 --   6. not found: when a selected boss's timer says it spawns within
 --      Config.BOSS_WAIT_MAX_SECONDS (TARGET_WAIT_MAX_SECONDS on a server
@@ -264,7 +265,11 @@ return {
                 task.wait(Config.WATCH_INTERVAL)
             end
 
+            --// Left the loop while still running: the boss died or was
+            --// removed, which is how this game shows a kill. Stop does not count.
             if IsActive() then
+                local Kills = Settings:AddKill(Boss.Name)
+                print(string.format("[AutoHunt] %s killed (%d total)", Boss.Name, Kills))
                 SetStatus("LOOTING  " .. Boss.Name)
                 task.wait(Config.LOOT_WAIT_SECONDS)
             end

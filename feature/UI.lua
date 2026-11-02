@@ -1,5 +1,6 @@
 -- UI is a small draggable window: tick the bosses to hunt, Start / Stop,
--- Hop After Kill, Hop Now, and the current status.
+-- Hop After Kill, Hop Now, and the current status. Each boss shows how many
+-- times it was killed.
 return {
     Name = "UI",
     Dependencies = {"Config", "Settings", "AutoHunt"},
@@ -133,6 +134,36 @@ return {
             Parent = Window,
         })
 
+        --// Kills of the selected boss and of all bosses, kept across
+        --// hops and game sessions by Settings.
+        local KillsLabel = Create("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 18),
+            BackgroundTransparency = 1,
+            TextColor3 = COLOR.Text,
+            Font = Enum.Font.GothamMedium,
+            TextSize = 13,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            LayoutOrder = 3,
+            Parent = Window,
+        })
+
+        local function PaintKills()
+            local Total = 0
+
+            for _, Count in pairs(Data.Kills) do
+                Total += Count
+            end
+
+            local Selected = Settings:GetSelected()
+            local Text = string.format("KILLS TOTAL: %d", Total)
+
+            if Selected then
+                Text = string.format("KILLS: %s %d  //  TOTAL %d", Selected, Settings:GetKills(Selected), Total)
+            end
+
+            KillsLabel.Text = Text
+        end
+
         local List = Create("ScrollingFrame", {
             Size = UDim2.new(1, 0, 0, LIST_HEIGHT),
             CanvasSize = UDim2.new(),
@@ -140,7 +171,7 @@ return {
             ScrollBarThickness = 4,
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
-            LayoutOrder = 3,
+            LayoutOrder = 4,
             Parent = Window,
         })
 
@@ -152,7 +183,7 @@ return {
 
         local function PaintBoss(Button, Name)
             local Selected = Data.Selected[Name] == true
-            Button.Text = (Selected and "[x]  " or "[  ]  ") .. Name
+            Button.Text = string.format("%s%s  (%d)", Selected and "[x]  " or "[  ]  ", Name, Settings:GetKills(Name))
             Button.BackgroundColor3 = Selected and COLOR.On or COLOR.Row
         end
 
@@ -186,9 +217,9 @@ return {
         --// Controls
         ------------------------------------------------------------------------
 
-        local HopAfterKill = MakeButton(Window, "", 4)
-        local RunButton = MakeButton(Window, "", 5)
-        local HopNow = MakeButton(Window, "HOP NOW", 6)
+        local HopAfterKill = MakeButton(Window, "", 5)
+        local RunButton = MakeButton(Window, "", 6)
+        local HopNow = MakeButton(Window, "HOP NOW", 7)
 
         local function PaintControls()
             HopAfterKill.Text = "HOP AFTER KILL: " .. (Data.HopAfterKill and "ON" or "OFF")
@@ -244,6 +275,9 @@ return {
         task.spawn(function()
             while Lifetime.Alive do
                 Status.Text = "STATUS: " .. AutoHunt:GetStatus()
+                --// Picks up new kill counts.
+                PaintAllBosses()
+                PaintKills()
                 task.wait(STATUS_REFRESH)
             end
         end)
