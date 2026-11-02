@@ -328,9 +328,16 @@ return {
 
         local function HopToSpawnTarget()
             local Boss = Settings:GetSelected()
-            local JobId, SpawnIn = Boss and ServerMemory:FindSpawnTarget(Boss, game.JobId)
 
-            if not JobId then
+            if not Boss then
+                return false
+            end
+
+            --// Not `Boss and FindSpawnTarget(...)`: `and` keeps only the
+            --// first return value, which left SpawnIn nil.
+            local JobId, SpawnIn = ServerMemory:FindSpawnTarget(Boss, game.JobId)
+
+            if not JobId or type(SpawnIn) ~= "number" then
                 return false
             end
 
@@ -376,7 +383,12 @@ return {
                 return false
             end
 
-            if HopToSpawnTarget() then
+            --// A spawn target that fails to start still leaves a random hop.
+            local Ok, Joined = pcall(HopToSpawnTarget)
+
+            if not Ok then
+                warn("[AutoHunt] Spawn target hop failed, hopping at random:", Joined)
+            elseif Joined then
                 return true
             end
 
