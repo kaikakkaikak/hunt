@@ -8,10 +8,12 @@
 -- waypoint by waypoint, each leg checked the same way. Points with no floor
 -- under them (pits, out of the map) are never flown to.
 --
--- When the path is there but every leg of it is blocked ("path blocked":
--- often an invisible part the game lets players through), the next
--- waypoint is flown to anyway, through what is in the way, while
--- Config.DUNGEON_FLY_THROUGH_BLOCKED is on.
+-- While Config.DUNGEON_FLY_THROUGH_BLOCKED is on, a way that cannot be
+-- flown without touching anything is flown through anyway:
+--   "path blocked" (every leg of the path hits something, often an
+--   invisible part the game lets players through): the next waypoint;
+--   "no path" (PathfindingService finds none, e.g. the next part of the
+--   dungeon has no walkable way in): straight at the target.
 --
 -- While engaged, the character is held at the tween's position every frame
 -- (velocity zeroed so it does not fall) at Config.DUNGEON_HOVER_OFFSET
@@ -372,7 +374,7 @@ return {
             end
 
             if not S.Path then
-                return nil, "no path"
+                return Config.DUNGEON_FLY_THROUGH_BLOCKED and Target or nil, "no path"
             end
 
             local Point = S.Path.Index <= #S.Path.Points and AimOnPath(S.Path, From)
@@ -389,6 +391,10 @@ return {
                 local Index = math.min(Core.AdvanceIndex(Points, S.Path.Index, From.X, From.Z, WAYPOINT_REACHED), #Points)
                 S.Path.Index = Index
                 return Points[Index]
+            end
+
+            if not Point and not S.Path and Config.DUNGEON_FLY_THROUGH_BLOCKED then
+                return Target
             end
 
             if not Point then

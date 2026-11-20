@@ -202,8 +202,9 @@ return {
             DUNGEON_HOVER_OFFSET = 1.5,
             DUNGEON_STEP_STUDS = 14,
             DUNGEON_SWEEP_SIZE = { 2.5, 4, 2.5 },
-            --// A path whose every leg is blocked is flown through anyway,
-            --// waypoint by waypoint (off: such a target counts as blocked).
+            --// Fly through when there is no clear way: along the path when
+            --// every leg of it is blocked, straight at the target when no
+            --// path is found (off: such a target counts as blocked).
             DUNGEON_FLY_THROUGH_BLOCKED = true,
 
             --// Fighting: hover this far from the target; skills go out while
