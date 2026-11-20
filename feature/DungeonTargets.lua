@@ -13,9 +13,10 @@
 --
 -- Which one to fight next (Core.Pick): the ritual pillar first (the boss's
 -- fight has pillars too), then the miniboss or boss (never left for a
--- monster while alive), then a monster we can see within
--- Config.DUNGEON_ENGAGE_RADIUS (one behind a wall is not "near"), then the
--- other monsters; the nearest of the same kind first.
+-- monster while alive), then the monsters; the nearest of the same kind
+-- first. While a pillar stands, the monsters we can see within
+-- Config.DUNGEON_ENGAGE_RADIUS (one behind a wall is not "near") come
+-- before it: the pillar takes no hits while they are about.
 -- Monsters passed on the way are still hit (AutoDungeon attacks anything
 -- in range). Nothing left to fight: the boxes in the rooms are collected
 -- (FindLoot), then the boss door's prompt is held open.
@@ -85,9 +86,11 @@ function Core.IsDoorText(Texts, Cfg)
     return false
 end
 
-local PRIORITY = { pillar = 1, major = 2, mob = 4 }
---// A monster close by and in sight: after the pillar and a boss.
-local NEAR_MOB = 3
+local PRIORITY = { pillar = 2, major = 3, mob = 5 }
+--// A monster close by and in sight: first while a pillar stands (it
+--// takes no hits while they are about), else after a boss.
+local NEAR_MOB_AT_PILLAR = 1
+local NEAR_MOB = 4
 
 --// A prompt worth using to collect: none of DUNGEON_LOOT_SKIP_KEYWORDS (a
 --// way out of the dungeon), and one of DUNGEON_LOOT_KEYWORDS (any, when
@@ -131,6 +134,11 @@ end
 function Core.Pick(Targets, Position, CurrentId, Cfg)
     local Best, BestRank, BestDistance = nil, math.huge, math.huge
     local Current, CurrentRank = nil, math.huge
+    local PillarStands = false
+
+    for _, Target in ipairs(Targets) do
+        PillarStands = PillarStands or (Target.Kind == "pillar" and not Target.Skipped)
+    end
 
     for _, Target in ipairs(Targets) do
         if not Target.Skipped then
@@ -138,7 +146,7 @@ function Core.Pick(Targets, Position, CurrentId, Cfg)
             local Rank = PRIORITY[Target.Kind] or math.huge
 
             if Target.Kind == "mob" and Cfg and Target.Visible and Distance <= Cfg.DUNGEON_ENGAGE_RADIUS then
-                Rank = NEAR_MOB
+                Rank = PillarStands and NEAR_MOB_AT_PILLAR or NEAR_MOB
             end
 
             if Rank < BestRank or (Rank == BestRank and Distance < BestDistance) then

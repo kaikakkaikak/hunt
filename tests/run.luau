@@ -648,17 +648,22 @@ Test("the boss is not left for a monster close by", function()
 
     Equal(TargetCore.Pick({ Witch, Ghost }, At, "W", Cfg), Witch, "kept on the boss")
     Equal(TargetCore.Pick({ Witch, Ghost }, At, "G", Cfg), Witch, "back to the boss")
+
+    local Pillar = { Id = "P", Kind = "pillar", X = 30, Y = 0, Z = 0 }
+    Equal(TargetCore.Pick({ Witch, Ghost, Pillar }, At, "W", Cfg), Ghost, "with a pillar: its monsters, then it")
+    Equal(TargetCore.Pick({ Witch, Pillar }, At, "W", Cfg), Pillar, "the pillar before the boss")
 end)
 
-Test("the pillar comes before monsters, close by or not", function()
+Test("monsters close by come before a pillar, the pillar before the rest", function()
     local At = { X = 0, Y = 0, Z = 0 }
     local Close = { Id = "M", Kind = "mob", X = 10, Y = 0, Z = 0, Visible = true }
     local Walled = { Id = "B", Kind = "mob", X = 8, Y = 0, Z = 0, Visible = false }
     local Far = { Id = "F", Kind = "mob", X = 200, Y = 0, Z = 0 }
     local Pillar = { Id = "P", Kind = "pillar", X = 5, Y = 0, Z = 0 }
 
-    Equal(TargetCore.Pick({ Pillar, Close, Far }, At, nil, Cfg), Pillar, "pillar first")
-    Equal(TargetCore.Pick({ Pillar, Close, Far }, At, "M", Cfg), Pillar, "off a monster for the pillar")
+    Equal(TargetCore.Pick({ Pillar, Close, Far }, At, nil, Cfg), Close, "close mob before the pillar")
+    Equal(TargetCore.Pick({ Pillar, Close, Far }, At, "P", Cfg), Close, "even off the pillar")
+    Equal(TargetCore.Pick({ Pillar, Far, Walled }, At, nil, Cfg), Pillar, "then the pillar, not one behind a wall")
     Equal(TargetCore.Pick({ Close, Far }, At, nil, Cfg), Close, "close one first")
     Equal(TargetCore.Pick({ Walled, Far }, At, "F", Cfg), Far, "one behind a wall is not close")
 end)
