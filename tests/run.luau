@@ -638,6 +638,17 @@ Test("targets: pillar, then boss or miniboss, then monsters", function()
     Equal(TargetCore.Pick({}, At), nil, "nothing")
 end)
 
+Test("monsters close by come before the pillar, even while hitting it", function()
+    local At = { X = 0, Y = 0, Z = 0 }
+    local Close = { Id = "M", Kind = "mob", X = 10, Y = 0, Z = 0 }
+    local Far = { Id = "F", Kind = "mob", X = 200, Y = 0, Z = 0 }
+    local Pillar = { Id = "P", Kind = "pillar", X = 5, Y = 0, Z = 0 }
+
+    Equal(TargetCore.Pick({ Pillar, Close, Far }, At, nil, Cfg), Close, "close mob first")
+    Equal(TargetCore.Pick({ Pillar, Close, Far }, At, "P", Cfg), Close, "even off the pillar")
+    Equal(TargetCore.Pick({ Pillar, Far }, At, "M", Cfg), Pillar, "then back to the pillar")
+end)
+
 Test("the target being fought is kept when another looks nearer", function()
     local At = { X = 0, Y = 0, Z = 0 }
     local Chased = { Id = "A", Kind = "mob", X = 50, Y = 0, Z = 0 }

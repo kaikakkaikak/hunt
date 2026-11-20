@@ -650,7 +650,7 @@ return {
                 return
             end
 
-            local Picked = TargetCore.Pick(Targets, Flat(Position), S.Target and S.Target.Model)
+            local Picked = TargetCore.Pick(Targets, Flat(Position), S.Target and S.Target.Model, Config)
 
             if Picked then
                 S.IdleSince, S.DoorLogged = nil, false

@@ -11,8 +11,11 @@
 -- is a "Sheet Ghost"). A monster is alive while its Humanoid is, or its
 -- Health / HP attribute is above 0.
 --
--- Which one to fight next (Core.Pick): the ritual pillar, then the
--- miniboss or boss, then monsters; the nearest of the same kind first.
+-- Which one to fight next (Core.Pick): a monster within
+-- Config.DUNGEON_ENGAGE_RADIUS (the game's auto goes for those first, and
+-- does not hit the pillar while they are about), then the ritual pillar,
+-- the miniboss or boss, then the other monsters; the nearest of the same
+-- kind first.
 -- Monsters passed on the way are still hit (AutoDungeon attacks anything
 -- in range). Nothing left to fight: the boxes in the rooms are collected
 -- (FindLoot), then the boss door's prompt is held open.
@@ -118,7 +121,7 @@ end
 --// shows up: "nearest" is a straight line through walls, so on the way
 --// round a corner another target would keep looking nearer, and we would
 --// turn back and forth between them.
-function Core.Pick(Targets, Position, CurrentId)
+function Core.Pick(Targets, Position, CurrentId, Cfg)
     local Best, BestRank, BestDistance = nil, math.huge, math.huge
     local Current, CurrentRank = nil, math.huge
 
@@ -126,6 +129,10 @@ function Core.Pick(Targets, Position, CurrentId)
         if not Target.Skipped then
             local Distance = math.sqrt((Target.X - Position.X) ^ 2 + (Target.Y - Position.Y) ^ 2 + (Target.Z - Position.Z) ^ 2)
             local Rank = PRIORITY[Target.Kind] or math.huge
+
+            if Target.Kind == "mob" and Cfg and Distance <= Cfg.DUNGEON_ENGAGE_RADIUS then
+                Rank = 0
+            end
 
             if Rank < BestRank or (Rank == BestRank and Distance < BestDistance) then
                 Best, BestRank, BestDistance = Target, Rank, Distance

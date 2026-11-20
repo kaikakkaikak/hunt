@@ -207,9 +207,10 @@ return {
             DUNGEON_FLY_THROUGH_BLOCKED = true,
 
             --// Fighting: hover this far from the target; skills go out while
-            --// it (or any monster we pass) is within ATTACK_RANGE.
-            --// are fought before anything else (the ones on the way).
+            --// it (or any monster we pass) is within ATTACK_RANGE. Monsters
+            --// within ENGAGE_RADIUS are fought before anything else.
             DUNGEON_ATTACK_DISTANCE = 6,
+            DUNGEON_ENGAGE_RADIUS = 30,
             DUNGEON_ATTACK_RANGE = 14,
             --// "auto": the game's own auto-fight (its button, see
             --// AUTO_BUTTON_NAMES); "keys": the skill keys below.
