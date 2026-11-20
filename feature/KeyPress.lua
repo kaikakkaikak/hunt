@@ -67,6 +67,24 @@ return {
             return true
         end
 
+        --// A left click in the middle of the screen (the basic attack in most
+        --// games). True when it could be sent.
+        function KeyPress.ClickCenter()
+            local Camera = workspace.CurrentCamera
+
+            if not VirtualInputManager or not Camera then
+                return false
+            end
+
+            local Center = Camera.ViewportSize / 2
+
+            return (pcall(function()
+                VirtualInputManager:SendMouseButtonEvent(Center.X, Center.Y, 0, true, game, 0)
+                task.wait(TAP_SECONDS)
+                VirtualInputManager:SendMouseButtonEvent(Center.X, Center.Y, 0, false, game, 0)
+            end))
+        end
+
         --// Holds the key for Seconds (yields).
         function KeyPress.Hold(KeyCode, Seconds)
             if not KeyPress.Send(KeyCode, true) then

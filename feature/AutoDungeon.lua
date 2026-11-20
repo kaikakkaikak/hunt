@@ -183,7 +183,9 @@ return {
             return false
         end
 
-        DungeonAttack.Run(IsActive, TargetInRange)
+        DungeonAttack.Run(IsActive, TargetInRange, function()
+            return S.Target and S.Target.Kind
+        end)
 
         ------------------------------------------------------------------------
         --// Dodging

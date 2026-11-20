@@ -7,6 +7,9 @@
 --          toggle, so a second press would switch it off;
 --   "keys": skill Config.DUNGEON_SKILL_KEY every DUNGEON_SKILL_INTERVAL and
 --          the buff DUNGEON_BUFF_KEY every DUNGEON_BUFF_INTERVAL.
+-- The ritual pillar is hit with the keys (and a click, DUNGEON_PILLAR_CLICK)
+-- in both modes: the game's auto picks its own targets and goes for the
+-- monsters around it instead.
 return {
     Name = "DungeonAttack",
     Dependencies = {"Config", "GameAuto", "KeyPress"},
@@ -41,23 +44,36 @@ return {
         end
 
         --// Hits while IsActive() and InRange() hold, until unloaded.
-        function DungeonAttack.Run(IsActive, InRange)
+        --// TargetKind() is the kind being fought ("pillar", ...) or nil.
+        function DungeonAttack.Run(IsActive, InRange, TargetKind)
             task.spawn(function()
                 local SkillKey = Enum.KeyCode[Config.DUNGEON_SKILL_KEY]
                 local BuffKey = Enum.KeyCode[Config.DUNGEON_BUFF_KEY]
                 local LastBuff = -math.huge
 
+                local function HitWithKeys(Click)
+                    if os.clock() - LastBuff >= Config.DUNGEON_BUFF_INTERVAL then
+                        LastBuff = os.clock()
+                        KeyPress.Tap(BuffKey)
+                    end
+
+                    KeyPress.Tap(SkillKey)
+
+                    if Click then
+                        KeyPress.ClickCenter()
+                    end
+                end
+
                 while Lifetime.Alive do
                     if IsActive() and InRange() then
+                        local OnPillar = TargetKind() == "pillar"
+
                         if Config.DUNGEON_ATTACK_MODE == "auto" then
                             KeepAutoOn()
-                        else
-                            if os.clock() - LastBuff >= Config.DUNGEON_BUFF_INTERVAL then
-                                LastBuff = os.clock()
-                                KeyPress.Tap(BuffKey)
-                            end
+                        end
 
-                            KeyPress.Tap(SkillKey)
+                        if OnPillar or Config.DUNGEON_ATTACK_MODE ~= "auto" then
+                            HitWithKeys(OnPillar and Config.DUNGEON_PILLAR_CLICK)
                         end
                     end
 

@@ -227,6 +227,10 @@ return {
             DUNGEON_SKILL_INTERVAL = 0.2,
             DUNGEON_BUFF_KEY = "Four",
             DUNGEON_BUFF_INTERVAL = 1,
+            --// The pillar is hit with the keys above in both modes (the
+            --// game's auto goes for monsters instead), plus a left click in
+            --// the middle of the screen while this is on.
+            DUNGEON_PILLAR_CLICK = true,
             --// A target not reached after this many blocked legs is left
             --// for this long.
             --// (each blocked try aims at another side of the target).
