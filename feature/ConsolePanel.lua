@@ -18,6 +18,10 @@ return {
         local WIDTH, HEIGHT = 340, 240
         local BAR_HEIGHT = 24
         local REFRESH = 0.5
+        --// Only the newest lines are drawn: one very long label stops
+        --// being drawn past its end, hiding the newest lines (Copy still
+        --// has them all).
+        local SHOWN_LINES = 120
         --// Within this many pixels of the bottom counts as following new lines.
         local FOLLOW_SLACK = 40
 
@@ -136,9 +140,10 @@ return {
 
         local function Render()
             local Lines = Console:GetLines(S.OnlyOurs)
-            local Out = table.create(#Lines)
+            local Out = table.create(math.min(#Lines, SHOWN_LINES))
 
-            for _, Line in ipairs(Lines) do
+            for Index = math.max(1, #Lines - SHOWN_LINES + 1), #Lines do
+                local Line = Lines[Index]
                 table.insert(Out, string.format(
                     '<font color="%s">%s  %s</font>',
                     KIND_COLOR[Line.Kind] or KIND_COLOR.info,

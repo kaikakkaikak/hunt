@@ -4,8 +4,8 @@
 --// Pure helpers, tested in tests/run.luau.
 local Core = {}
 
---// Lines of ours carry this tag.
-Core.TAG = "[AutoHunt]"
+--// Lines of ours carry one of these tags.
+Core.TAGS = { "[AutoHunt]", "[AutoDungeon]", "[GameAuto]" }
 
 --// Lines (oldest first) with Line added at the end, keeping the newest
 --// Max, as a new list.
@@ -23,7 +23,13 @@ function Core.IsShown(Line, OnlyOurs)
         return true
     end
 
-    return string.find(Line.Text, Core.TAG, 1, true) ~= nil
+    for _, Tag in ipairs(Core.TAGS) do
+        if string.find(Line.Text, Tag, 1, true) then
+            return true
+        end
+    end
+
+    return false
 end
 
 --// Text safe inside a RichText label.

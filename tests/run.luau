@@ -465,6 +465,8 @@ Test("Console shows our lines, warnings and errors; all when asked", function()
     local Warn = { Text = "something", Kind = "warn" }
 
     Equal(ConsoleCore.IsShown(Ours, true), true, "ours")
+    Equal(ConsoleCore.IsShown({ Text = "[AutoDungeon] Target: Skull Bat (mob)", Kind = "info" }, true), true, "dungeon")
+    Equal(ConsoleCore.IsShown({ Text = "[GameAuto] Pressed the auto button", Kind = "info" }, true), true, "game auto")
     Equal(ConsoleCore.IsShown(Game, true), false, "game print")
     Equal(ConsoleCore.IsShown(Warn, true), true, "warning")
     Equal(ConsoleCore.IsShown(Game, false), true, "all")
