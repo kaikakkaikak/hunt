@@ -8,6 +8,11 @@
 -- waypoint by waypoint, each leg checked the same way. Points with no floor
 -- under them (pits, out of the map) are never flown to.
 --
+-- When the path is there but every leg of it is blocked ("path blocked":
+-- often an invisible part the game lets players through), the next
+-- waypoint is flown to anyway, through what is in the way, while
+-- Config.DUNGEON_FLY_THROUGH_BLOCKED is on.
+--
 -- While engaged, the character is held at the tween's position every frame
 -- (velocity zeroed so it does not fall) at Config.DUNGEON_HOVER_OFFSET
 -- above its standing height, facing what SetFacing gave. Speed is the
@@ -376,6 +381,14 @@ return {
             if not Point then
                 S.Path = NewPath(From, Target)
                 Point = S.Path and AimOnPath(S.Path, From)
+            end
+
+            if not Point and S.Path and Config.DUNGEON_FLY_THROUGH_BLOCKED then
+                --// The path still says where to go: follow it through.
+                local Points = S.Path.Points
+                local Index = math.min(Core.AdvanceIndex(Points, S.Path.Index, From.X, From.Z, WAYPOINT_REACHED), #Points)
+                S.Path.Index = Index
+                return Points[Index]
             end
 
             if not Point then
