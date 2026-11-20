@@ -367,8 +367,9 @@ return {
         end
 
         --// The nearest box to collect (a prompt that is not the door nor a
-        --// way out) from Position, leaving out those CanTry says no to.
-        function DungeonTargets.FindLoot(Position, CanTry)
+        --// way out) within MaxDistance of Position, leaving out those CanTry
+        --// says no to.
+        function DungeonTargets.FindLoot(Position, CanTry, MaxDistance)
             local Best, BestDistance = nil, math.huge
 
             for _, Prompt in ipairs(EnabledPrompts()) do
@@ -377,7 +378,7 @@ return {
                 if not Core.IsDoorText(Texts, Config) and Core.IsLootText(Texts, Config) and CanTry(Prompt) then
                     local Distance = (GetPosition(Prompt.Parent) - Position).Magnitude
 
-                    if Distance < BestDistance then
+                    if Distance <= MaxDistance and Distance < BestDistance then
                         Best, BestDistance = Prompt, Distance
                     end
                 end

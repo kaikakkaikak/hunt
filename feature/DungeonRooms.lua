@@ -192,14 +192,16 @@ return {
             S.Root, S.ReadAt = Root, os.clock()
             S.Rooms = Root and Read(Root) or {}
 
-            if #S.Rooms ~= Count then
+            if #S.Rooms ~= Count or not S.Logged then
+                S.Logged = true
                 local Names = {}
 
                 for _, Room in ipairs(S.Rooms) do
                     table.insert(Names, Room.Name)
                 end
 
-                print(string.format("[AutoDungeon] %d rooms to explore: %s", #S.Rooms, table.concat(Names, ", ")))
+                print(string.format("[AutoDungeon] %d rooms to explore: %s", #S.Rooms, #Names > 0 and table.concat(Names, ", ")
+                    or "none (nothing in " .. Config.DUNGEON_ROOT_NAME .. " is named like a room: see DUNGEON_ROOM_NAMES)"))
             end
         end
 

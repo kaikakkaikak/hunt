@@ -527,7 +527,7 @@ return {
                 --// it is kept, so other rooms' boxes are not flown to.
                 Ending.Chest = Ending.Chest or DungeonTargets.FindLoot(Position, function(Prompt)
                     return (S.PromptTries[Prompt] or 0) < Config.DUNGEON_LOOT_TRIES
-                end)
+                end, Config.DUNGEON_END_CHEST_RADIUS)
 
                 local Chest = Ending.Chest
 
@@ -650,17 +650,26 @@ return {
             local Picked = TargetCore.Pick(Targets, Flat(Position), S.Target and S.Target.Model, Config)
 
             if Picked then
-                S.IdleSince, S.DoorLogged = nil, false
+                S.IdleSince, S.DoorLogged, S.NothingLogged = nil, false, false
                 return Fight(Picked.Entry, Position, Hazards)
             end
 
             --// Both can be switched off in the UI (CHECK ROOMS, COLLECT BOXES).
+            --// Only boxes close by (the room we are in): one across the map
+            --// would pull us past rooms not done yet.
             local Loot = Data.DungeonLoot and DungeonTargets.FindLoot(Position, function(Prompt)
                 return (S.PromptTries[Prompt] or 0) < Config.DUNGEON_LOOT_TRIES
-            end)
+            end, Config.DUNGEON_LOOT_RADIUS)
 
             if Loot then
                 S.IdleSince = nil
+
+                if S.LootLogged ~= Loot then
+                    S.LootLogged = Loot
+                    local Gap = Distance(Position, DungeonTargets.GetPosition(Loot.Parent))
+                    print(string.format("[AutoDungeon] Box: %s (%d studs)", Loot:GetFullName(), math.floor(Gap)))
+                end
+
                 return UsePrompt(Loot, Position, "COLLECTING " .. Loot.Parent.Name)
             end
 
@@ -694,6 +703,11 @@ return {
 
             if S.SawMajor and os.clock() - S.IdleSince >= Config.DUNGEON_DONE_SECONDS then
                 return Idle("DUNGEON CLEARED")
+            end
+
+            if not S.NothingLogged then
+                S.NothingLogged = true
+                print("[AutoDungeon] Nothing to fight, no room, box or door left: waiting")
             end
 
             Idle("NOTHING TO FIGHT")

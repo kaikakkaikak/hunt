@@ -181,6 +181,8 @@ return {
             DUNGEON_LOOT_KEYWORDS = {},
             DUNGEON_LOOT_SKIP_KEYWORDS = { "leave", "exit", "return", "lobby", "teleport", "quit" },
             DUNGEON_LOOT_TRIES = 3,
+            --// Only boxes this close are flown to (the room we are in).
+            DUNGEON_LOOT_RADIUS = 40,
 
             --// The end: this boss dying ends the run. The end chest is
             --// waited for up to END_CHEST_WAIT seconds, the summary's Replay
@@ -189,6 +191,8 @@ return {
             --// at most, until the summary closes.
             DUNGEON_FINAL_BOSS_NAMES = { "Skull King" },
             DUNGEON_END_CHEST_WAIT = 8,
+            --// The end chest is looked for this far from where the boss died.
+            DUNGEON_END_CHEST_RADIUS = 80,
             DUNGEON_REPLAY_TEXTS = { "replay", "play again", "retry" },
             DUNGEON_REPLAY_WAIT = 30,
             DUNGEON_REPLAY_RETRY = 3,
