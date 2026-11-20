@@ -83,6 +83,7 @@ return {
         --// A path's later waypoints are tried first, up to this many ahead,
         --// so a clear shortcut skips the ones in between.
         local PATH_LOOKAHEAD = 6
+        local RENDER_HOLD = "AutoHuntHold"
         --// A waypoint counts as passed this close (X and Z only).
         local WAYPOINT_REACHED = 2
         --// A path is kept while its destination moved less than this and
@@ -252,6 +253,12 @@ return {
             S.Goal = Root.Position
             S.Engaged = true
             S.Connection = RunService.Heartbeat:Connect(Hold)
+            --// Also last before each frame is drawn: the game's auto may move
+            --// the character then (in front of its target), which would be
+            --// what is seen even though Heartbeat puts it back.
+            pcall(function()
+                RunService:BindToRenderStep(RENDER_HOLD, Enum.RenderPriority.Last.Value, Hold)
+            end)
             return true
         end
 
@@ -273,6 +280,10 @@ return {
                 S.Connection:Disconnect()
                 S.Connection = nil
             end
+
+            pcall(function()
+                RunService:UnbindFromRenderStep(RENDER_HOLD)
+            end)
         end
 
         --// Flies to Position (already checked). True when it got there,

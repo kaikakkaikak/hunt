@@ -330,6 +330,12 @@ return {
         local function Fight(Target, Position, Hazards)
             if not S.Target or S.Target.Model ~= Target.Model then
                 print(string.format("[AutoDungeon] Target: %s (%s)", Target.Name, Target.Kind))
+                S.Side[Target.Model] = nil
+
+                if Target.Kind == "major" and Data.DungeonBackstab then
+                    print(Target.Look and ("[AutoDungeon] Hitting " .. Target.Name .. " from behind")
+                        or ("[AutoDungeon] " .. Target.Name .. " has no facing to get behind (no HumanoidRootPart / PrimaryPart)"))
+                end
             end
 
             S.Target = Target
@@ -360,6 +366,9 @@ return {
             S.Blocked[Target.Model] = nil
 
             if Result == "arrived" then
+                --// Reached: the next spot is the wanted side again (behind a
+                --// boss), not the one a blocked try turned to.
+                S.Side[Target.Model] = nil
                 task.wait(Config.DUNGEON_TICK)
             end
         end
