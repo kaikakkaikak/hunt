@@ -121,6 +121,12 @@ return {
             return Click(false)
         end
 
+        --// The game is known to have its auto off (it always is on entering
+        --// the dungeon): no press, only what we believe.
+        function GameAuto:AssumeOff()
+            S.Enabled = false
+        end
+
         function GameAuto:Enable()
             return Press(true)
         end

@@ -1,5 +1,5 @@
--- AutoDungeon clears the Halloween dungeon by flying (SafeMove) and using
--- skills, without the game's own auto:
+-- AutoDungeon clears the Halloween dungeon by flying (SafeMove) and
+-- fighting (the game's auto, switched on once per dungeon):
 --   rooms' monsters -> ritual pillar -> miniboss -> boss door -> boss,
 -- in the order DungeonTargets.Pick gives (pillar, boss or miniboss, then
 -- monsters), hitting any monster in range on the way. Bosses and minibosses
@@ -60,9 +60,9 @@ return {
                 Side = setmetatable({}, { __mode = "k" }),
                 --// Prompt -> times it was used (boxes, the door).
                 PromptTries = setmetatable({}, { __mode = "k" }),
-                --// Checking the game's auto took after a press:
-                --// { Since, Presses, Health, Model }, or nil.
-                AutoCheck = nil,
+                --// The dungeon folder the game's auto was switched on in.
+                AutoRoot = nil,
+                AutoWarned = false,
                 --// Majors alive in the last scan (for SourceIsMajor).
                 Majors = {},
                 --// Mobs alive in the last scan.
@@ -171,43 +171,29 @@ return {
             return false
         end
 
-        --// The game's auto: switched on once something is in range. The
-        --// button is a toggle we cannot read, so a press is checked: the
-        --// target's health not going down within AUTO_CONFIRM_SECONDS
-        --// means the press turned it off, and it is pressed again (up to
-        --// AUTO_CONFIRM_TRIES times per target).
+        --// The game's auto: pressed on once, the first time something is in
+        --// range in this dungeon. The game always has it off on entering, so
+        --// a new dungeon (a new folder) starts from off and one press is
+        --// enough; it is never pressed again to check.
         local function KeepAutoOn()
-            local Target = S.Target
-            local Health = Target and DungeonTargets.GetHealth(Target.Model)
+            local Root = DungeonTargets.GetRoot()
 
-            if not GameAuto:IsEnabled() then
-                GameAuto:Enable()
-                S.AutoCheck = { Since = os.clock(), Presses = 0, Health = Health, Model = Target and Target.Model }
+            if Root ~= S.AutoRoot then
+                S.AutoRoot = Root
+                GameAuto:AssumeOff()
+            end
+
+            if GameAuto:IsEnabled() then
                 return
             end
 
-            local Check = S.AutoCheck
+            local Ok, Why = GameAuto:Enable()
 
-            --// A new target starts a new check.
-            if not Check or Check.Model ~= (Target and Target.Model) then
-                S.AutoCheck = { Since = os.clock(), Presses = 0, Health = Health, Model = Target and Target.Model }
-                return
-            end
-
-            --// No health to watch (the pillar): nothing to check.
-            if not Health or not Check.Health then
-                Check.Since, Check.Health = os.clock(), Health
-                return
-            end
-
-            local Next = GameAuto.Core.NextCheck(Check, Health < Check.Health, os.clock(), Config)
-
-            if Next == "ok" then
-                Check.Since, Check.Health = os.clock(), Health
-            elseif Next == "press" then
-                GameAuto:Repress()
-                Check.Presses += 1
-                Check.Since, Check.Health = os.clock(), Health
+            if Ok then
+                print("[AutoDungeon] Game auto switched on")
+            elseif not S.AutoWarned then
+                S.AutoWarned = true
+                warn("[AutoDungeon] Could not switch the game's auto on: " .. tostring(Why))
             end
         end
 
@@ -585,8 +571,11 @@ return {
             Data.Dungeon = Running == true
 
             if Data.Dungeon then
+                --// Off on entering: believed, not pressed, so stopping the
+                --// hunt below cannot toggle it on by mistake.
+                GameAuto:AssumeOff()
+                S.AutoRoot, S.AutoWarned = DungeonTargets.GetRoot(), false
                 AutoHunt:SetRunning(false)
-                GameAuto:Disable()
                 S.SawMajor, S.IdleSince = false, nil
                 S.PromptTries = setmetatable({}, { __mode = "k" })
                 DungeonRooms.Reset()
@@ -595,7 +584,7 @@ return {
             Settings:Save()
 
             if not Data.Dungeon then
-                S.Target, S.AutoCheck = nil, nil
+                S.Target = nil
                 SafeMove.Release()
                 GameAuto:Disable()
             end
