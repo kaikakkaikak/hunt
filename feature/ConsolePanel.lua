@@ -12,7 +12,6 @@ return {
         local NotifyAction = Context.NotifyAction
         local Create = Widgets.Create
         local COLOR = Widgets.COLOR
-        local Escape = Console.Core.Escape
 
         local GUI_NAME = "AutoHuntConsole"
         local WIDTH, HEIGHT = 340, 240
@@ -116,21 +115,32 @@ return {
 
         Widgets.Corner(Scroll)
 
-        local Text = Create("TextLabel", {
-            Size = UDim2.new(1, -10, 0, 0),
-            Position = UDim2.fromOffset(4, 2),
-            AutomaticSize = Enum.AutomaticSize.Y,
-            BackgroundTransparency = 1,
-            TextColor3 = COLOR.Text,
-            Font = Enum.Font.Code,
-            TextSize = 12,
-            RichText = true,
-            TextWrapped = true,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextYAlignment = Enum.TextYAlignment.Top,
-            Text = "",
-            Parent = Scroll,
-        })
+        --// One plain label per line, made as needed and reused: a single
+        --// label holding every line went blank on phones once too tall to
+        --// draw, and rich text goes blank on one bad tag.
+        Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Parent = Scroll })
+        Create("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 2), Parent = Scroll })
+
+        local LineLabels = {}
+
+        local function GetLineLabel(Index)
+            if not LineLabels[Index] then
+                LineLabels[Index] = Create("TextLabel", {
+                    Size = UDim2.new(1, 0, 0, 0),
+                    AutomaticSize = Enum.AutomaticSize.Y,
+                    BackgroundTransparency = 1,
+                    Font = Enum.Font.Code,
+                    TextSize = 12,
+                    TextWrapped = true,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    TextYAlignment = Enum.TextYAlignment.Top,
+                    LayoutOrder = Index,
+                    Parent = Scroll,
+                })
+            end
+
+            return LineLabels[Index]
+        end
 
         Widgets.Draggable(Title, Window)
 
@@ -138,21 +148,32 @@ return {
             Filter.Text = S.OnlyOurs and "AUTOHUNT" or "ALL"
         end
 
+        --// Fills the line labels with the newest SHOWN_LINES lines.
         local function Render()
             local Lines = Console:GetLines(S.OnlyOurs)
-            local Out = table.create(math.min(#Lines, SHOWN_LINES))
+            local Shown = 0
 
             for Index = math.max(1, #Lines - SHOWN_LINES + 1), #Lines do
                 local Line = Lines[Index]
-                table.insert(Out, string.format(
-                    '<font color="%s">%s  %s</font>',
-                    KIND_COLOR[Line.Kind] or KIND_COLOR.info,
-                    os.date("%H:%M:%S", Line.Time),
-                    Escape(Line.Text)
-                ))
+                Shown += 1
+
+                local Label = GetLineLabel(Shown)
+                Label.Text = os.date("%H:%M:%S", Line.Time) .. "  " .. Line.Text
+                Label.TextColor3 = Color3.fromHex(KIND_COLOR[Line.Kind] or KIND_COLOR.info)
+                Label.Visible = true
             end
 
-            return #Out > 0 and table.concat(Out, "\n") or '<font color="#96969F">(no output yet)</font>'
+            if Shown == 0 then
+                Shown = 1
+                local Label = GetLineLabel(1)
+                Label.Text = "(no output yet)"
+                Label.TextColor3 = COLOR.Dim
+                Label.Visible = true
+            end
+
+            for Index = Shown + 1, #LineLabels do
+                LineLabels[Index].Visible = false
+            end
         end
 
         --// Redraws when the lines or the filter changed; keeps following
@@ -165,7 +186,7 @@ return {
             local Bottom = Scroll.AbsoluteCanvasSize.Y - Scroll.AbsoluteWindowSize.Y
             local Following = Scroll.CanvasPosition.Y >= Bottom - FOLLOW_SLACK
 
-            Text.Text = Render()
+            Render()
             S.DrawnVersion, S.DrawnOnlyOurs = Console:GetVersion(), S.OnlyOurs
 
             if Following then

@@ -9,6 +9,25 @@
 -- fight ends up with auto on whichever way the guess was wrong.
 local Core = {}
 
+--// Whether the auto is on from how its button looks now (Current), given
+--// how it looked on (OnLook) and off (OffLook): true, false, or nil when
+--// that is not known (not learned yet, or on and off look the same).
+function Core.ReadState(Current, OnLook, OffLook)
+    if not OnLook or not OffLook or OnLook == OffLook then
+        return nil
+    end
+
+    if Current == OnLook then
+        return true
+    end
+
+    if Current == OffLook then
+        return false
+    end
+
+    return nil
+end
+
 --// What to do about the last press: Check = { Since = os.clock() of the
 --// press, Presses = re-presses made so far }, Active = a sign of the auto
 --// working was seen since. "ok", "wait", "press" or "giveup".
@@ -78,7 +97,50 @@ return {
             return nil
         end
 
+        --// The button changes look as it goes on and off (its colours, text,
+        --// image): this sums that up, so a look can be compared later.
+        local MAX_LOOK_PARTS = 40
+        --// After a press, the button gets this long to show its new look.
+        local LOOK_SETTLE = 0.5
+
+        local function Look(Button)
+            local Parts = {}
+
+            for Index, Gui in ipairs({ Button, table.unpack(Button:GetDescendants(), 1, MAX_LOOK_PARTS) }) do
+                local Part = { Index, Gui.Name }
+
+                if Gui:IsA("GuiObject") then
+                    table.insert(Part, Gui.BackgroundColor3:ToHex())
+                    table.insert(Part, math.floor(Gui.BackgroundTransparency * 100))
+                    table.insert(Part, tostring(Gui.Visible))
+                end
+
+                if Gui:IsA("TextLabel") or Gui:IsA("TextButton") then
+                    table.insert(Part, Gui.Text)
+                    table.insert(Part, Gui.TextColor3:ToHex())
+                elseif Gui:IsA("ImageLabel") or Gui:IsA("ImageButton") then
+                    table.insert(Part, Gui.Image)
+                    table.insert(Part, Gui.ImageColor3:ToHex())
+                elseif Gui:IsA("UIStroke") then
+                    table.insert(Part, tostring(Gui.Enabled))
+                    table.insert(Part, Gui.Color:ToHex())
+                elseif Gui:IsA("UIGradient") then
+                    table.insert(Part, tostring(Gui.Enabled))
+                end
+
+                for Key, Value in ipairs(Part) do
+                    Part[Key] = tostring(Value)
+                end
+
+                table.insert(Parts, table.concat(Part, ","))
+            end
+
+            return table.concat(Parts, "|")
+        end
+
         --// Clicks the button and records WantEnabled. True, or false and why.
+        --// Learns what on and off look like from the button before and
+        --// after the press.
         local function Click(WantEnabled)
             local Button = GameAuto:FindButton()
 
@@ -86,8 +148,24 @@ return {
                 return false, "auto button not found"
             end
 
+            local Before = Look(Button)
+
             if not GuiClick.Click(Button) then
                 return false, "could not click the auto button"
+            end
+
+            task.wait(LOOK_SETTLE)
+
+            local Now = GameAuto:FindButton() or Button
+            local After = Look(Now)
+
+            if After ~= Before then
+                local Learned = S.OnLook == nil
+                S.OnLook, S.OffLook = WantEnabled and After or Before, WantEnabled and Before or After
+
+                if Learned then
+                    print("[GameAuto] Learned how the auto button looks on and off")
+                end
             end
 
             S.Enabled = WantEnabled
@@ -108,6 +186,13 @@ return {
 
         function GameAuto:IsEnabled()
             return S.Enabled
+        end
+
+        --// The auto's real state from the button's look: true, false, or
+        --// nil when it cannot be told (not learned yet, button not there).
+        function GameAuto:ReadState()
+            local Button = GameAuto:FindButton()
+            return Button and Core.ReadState(Look(Button), S.OnLook, S.OffLook) or nil
         end
 
         --// Presses the button even though we think it is on already: the
