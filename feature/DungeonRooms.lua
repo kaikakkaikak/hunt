@@ -45,10 +45,19 @@ function Core.RoomKey(Name, X, Z)
     return string.format("%s@%d,%d", Name, math.floor(X / 4 + 0.5), math.floor(Z / 4 + 0.5))
 end
 
---// The nearest room not done and not skipped, from Position ({ X, Y, Z }).
---// Rooms = { X, Y, Z, Done, Skipped }.
-function Core.NextRoom(Rooms, Position)
+--// The room to fly to from Position ({ X, Y, Z }): the one already being
+--// flown to (CurrentKey) until it is done or skipped, else the nearest
+--// one not done and not skipped. Rooms = { Key, X, Y, Z, Done, Skipped }.
+--// Keeping the room stops us turning back at a corner when another room
+--// looks nearer in a straight line through the walls.
+function Core.NextRoom(Rooms, Position, CurrentKey)
     local Best, BestDistance = nil, math.huge
+
+    for _, Room in ipairs(Rooms) do
+        if CurrentKey ~= nil and Room.Key == CurrentKey and not Room.Done and not Room.Skipped then
+            return Room
+        end
+    end
 
     for _, Room in ipairs(Rooms) do
         if not Room.Done and not Room.Skipped then
@@ -88,6 +97,8 @@ return {
                 Done = {},
                 SkipUntil = {},
                 Blocked = {},
+                --// The room being flown to.
+                CurrentKey = nil,
             },
         }
 
@@ -200,6 +211,7 @@ return {
             for _, Room in ipairs(S.Rooms) do
                 if Room.Instance.Parent then
                     table.insert(Candidates, {
+                        Key = Room.Key,
                         X = Room.Position.X, Y = Room.Position.Y, Z = Room.Position.Z,
                         Done = S.Done[Room.Key] == true,
                         Skipped = (S.SkipUntil[Room.Key] or 0) > Now,
@@ -208,7 +220,13 @@ return {
                 end
             end
 
-            local Next = Core.NextRoom(Candidates, { X = Position.X, Y = Position.Y, Z = Position.Z })
+            local Next = Core.NextRoom(Candidates, { X = Position.X, Y = Position.Y, Z = Position.Z }, S.CurrentKey)
+
+            if Next and Next.Key ~= S.CurrentKey then
+                print("[AutoDungeon] Exploring room " .. Next.Room.Name)
+            end
+
+            S.CurrentKey = Next and Next.Key or nil
             return Next and Next.Room or nil
         end
 
@@ -252,6 +270,7 @@ return {
         --// A new run explores every room again.
         function DungeonRooms.Reset()
             S.Done, S.SkipUntil, S.Blocked = {}, {}, {}
+            S.CurrentKey = nil
             S.ReadAt = -math.huge
         end
 

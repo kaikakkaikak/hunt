@@ -276,6 +276,10 @@ return {
         end
 
         local function Fight(Target, Position, Hazards)
+            if not S.Target or S.Target.Model ~= Target.Model then
+                print(string.format("[AutoDungeon] Target: %s (%s)", Target.Name, Target.Kind))
+            end
+
             S.Target = Target
             SafeMove.SetFacing(Target.Position)
             SetStatus(string.format("FIGHTING %s (%s)", Target.Name, Target.Kind))
@@ -360,6 +364,7 @@ return {
                 local Pickable = Flat(Entry.Position)
                 Pickable.Kind = Entry.Kind
                 Pickable.Entry = Entry
+                Pickable.Id = Entry.Model
                 Pickable.Skipped = (S.SkipUntil[Entry.Model] or 0) > Now
                 table.insert(Targets, Pickable)
             end
@@ -446,7 +451,7 @@ return {
                 return
             end
 
-            local Picked = TargetCore.Pick(Targets, Flat(Position))
+            local Picked = TargetCore.Pick(Targets, Flat(Position), S.Target and S.Target.Model)
 
             if Picked then
                 S.IdleSince, S.DoorLogged = nil, false

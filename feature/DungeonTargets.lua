@@ -79,10 +79,16 @@ end
 local PRIORITY = { pillar = 1, major = 2, mob = 3 }
 
 --// The target to fight from Position ({ X, Y, Z }), or nil. Targets =
---// { Kind, X, Y, Z, Skipped }: a skipped one (could not be reached) is
+--// { Id, Kind, X, Y, Z, Skipped }: a skipped one (could not be reached) is
 --// left for later.
-function Core.Pick(Targets, Position)
+--//
+--// The one being fought (CurrentId) is kept while nothing of a better kind
+--// shows up: "nearest" is a straight line through walls, so on the way
+--// round a corner another target would keep looking nearer, and we would
+--// turn back and forth between them.
+function Core.Pick(Targets, Position, CurrentId)
     local Best, BestRank, BestDistance = nil, math.huge, math.huge
+    local Current, CurrentRank = nil, math.huge
 
     for _, Target in ipairs(Targets) do
         if not Target.Skipped then
@@ -92,7 +98,15 @@ function Core.Pick(Targets, Position)
             if Rank < BestRank or (Rank == BestRank and Distance < BestDistance) then
                 Best, BestRank, BestDistance = Target, Rank, Distance
             end
+
+            if CurrentId ~= nil and Target.Id == CurrentId then
+                Current, CurrentRank = Target, Rank
+            end
         end
+    end
+
+    if Current and CurrentRank <= BestRank then
+        return Current
     end
 
     return Best

@@ -637,6 +637,18 @@ Test("targets: pillar, then boss or miniboss, then monsters", function()
     Equal(TargetCore.Pick({}, At), nil, "nothing")
 end)
 
+Test("the target being fought is kept when another looks nearer", function()
+    local At = { X = 0, Y = 0, Z = 0 }
+    local Chased = { Id = "A", Kind = "mob", X = 50, Y = 0, Z = 0 }
+    local Behind = { Id = "B", Kind = "mob", X = -5, Y = 0, Z = 0 }
+    local Boss = { Id = "K", Kind = "major", X = 90, Y = 0, Z = 0 }
+
+    Equal(TargetCore.Pick({ Chased, Behind }, At, "A"), Chased, "kept")
+    Equal(TargetCore.Pick({ Chased, Behind }, At, nil), Behind, "nearest when none")
+    Equal(TargetCore.Pick({ Chased, Behind, Boss }, At, "A"), Boss, "a better kind wins")
+    Equal(TargetCore.Pick({ Behind }, At, "A"), Behind, "gone: next one")
+end)
+
 Test("an unreachable target is left for later", function()
     local At = { X = 0, Y = 0, Z = 0 }
     local Stuck = { Kind = "pillar", X = 5, Y = 0, Z = 0, Skipped = true }
@@ -683,6 +695,12 @@ Test("the next room is the nearest one not visited or skipped", function()
 
     Equal(RoomCore.NextRoom({ Far, Near, Blocked }, At), Far, "next")
     Equal(RoomCore.NextRoom({ Near, Blocked }, At), nil, "all done")
+
+    local Going = { Key = "G", X = 80, Y = 0, Z = 0 }
+    local Closer = { Key = "C", X = 5, Y = 0, Z = 0 }
+    Equal(RoomCore.NextRoom({ Closer, Going }, At, "G"), Going, "kept while flying there")
+    Going.Done = true
+    Equal(RoomCore.NextRoom({ Closer, Going }, At, "G"), Closer, "done: the next one")
 end)
 
 Test("the boss door is the Stone Door", function()
