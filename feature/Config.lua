@@ -163,6 +163,16 @@ return {
             --// parent's or grandparent's name have a keyword in it (empty:
             --// any prompt).
             DUNGEON_DOOR_KEYWORDS = { "stone door", "stonedoor", "door" },
+            --// Rooms flown into when nothing is in sight (monsters spawn
+            --// only once someone gets there): things in the dungeon's folder
+            --// named with one of ROOM_NAMES, or with ROOM_KEYWORDS while
+            --// that is empty. Arrived within ROOM_ARRIVE studs; then wait
+            --// up to ROOM_WAIT seconds for monsters.
+            DUNGEON_ROOM_NAMES = {},
+            DUNGEON_ROOM_KEYWORDS = { "room", "spawn", "trigger", "wave", "stage", "area" },
+            DUNGEON_ROOM_ARRIVE = 8,
+            DUNGEON_ROOM_WAIT = 3,
+            DUNGEON_ROOM_MAX = 40,
             DUNGEON_DOOR_KEY = "E",
 
             --// Flying: WalkSpeed times this, this far above standing height,

@@ -31,6 +31,22 @@ if not Root then
         print("  " .. Child.Name .. "  [" .. Child.ClassName .. "]")
     end
 else
+    --// Two levels of the folder: the rooms' names are in here.
+    print("---- " .. ROOT_NAME .. " layout ----")
+
+    for _, Child in ipairs(Root:GetChildren()) do
+        print(string.format("%s [%s] children=%d", Child.Name, Child.ClassName, #Child:GetChildren()))
+
+        for Index, Grandchild in ipairs(Child:GetChildren()) do
+            if Index > 15 then
+                print("    ...")
+                break
+            end
+
+            print(string.format("    %s [%s]", Grandchild.Name, Grandchild.ClassName))
+        end
+    end
+
     print("---- monsters ----")
     local Counts = {}
 

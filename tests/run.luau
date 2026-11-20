@@ -21,6 +21,7 @@ local ConsoleCore = LoadSpec("feature/Console.lua").Core
 local MoveCore = LoadSpec("feature/SafeMove.lua").Core
 local SkillCore = LoadSpec("feature/SkillWatcher.lua").Core
 local TargetCore = LoadSpec("feature/DungeonTargets.lua").Core
+local RoomCore = LoadSpec("feature/DungeonRooms.lua").Core
 
 local Passed, Failed = 0, 0
 
@@ -647,6 +648,26 @@ Test("target kinds by the dungeon's names", function()
     Equal(TargetCore.Kind("Skull King [Boss]", Cfg), "major", "boss with a tag")
     Equal(TargetCore.Kind("Shopkeeper", Cfg), nil, "not a monster")
     Equal(TargetCore.Kind("Shopkeeper", With({ DUNGEON_MOB_NAMES = {} })), "mob", "no list: any")
+end)
+
+Test("rooms by keyword, or only the listed names once given", function()
+    Equal(RoomCore.IsRoomName("Room3", Cfg), true, "room")
+    Equal(RoomCore.IsRoomName("Mob_Spawn", Cfg), true, "spawn")
+    Equal(RoomCore.IsRoomName("Pumpkin", Cfg), false, "decor")
+
+    local Named = With({ DUNGEON_ROOM_NAMES = { "Area 1" } })
+    Equal(RoomCore.IsRoomName("Area1", Named), true, "listed")
+    Equal(RoomCore.IsRoomName("Room3", Named), false, "keywords unused")
+end)
+
+Test("the next room is the nearest one not visited or skipped", function()
+    local At = { X = 0, Y = 0, Z = 0 }
+    local Near = { X = 10, Y = 0, Z = 0, Done = true }
+    local Blocked = { X = 20, Y = 0, Z = 0, Skipped = true }
+    local Far = { X = 90, Y = 0, Z = 0 }
+
+    Equal(RoomCore.NextRoom({ Far, Near, Blocked }, At), Far, "next")
+    Equal(RoomCore.NextRoom({ Near, Blocked }, At), nil, "all done")
 end)
 
 Test("the boss door is the Stone Door", function()

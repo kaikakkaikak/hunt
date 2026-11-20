@@ -1,7 +1,10 @@
 -- AutoDungeon clears the Halloween dungeon by flying (SafeMove) and using
 -- skills, without the game's own auto:
 --   rooms' monsters -> ritual pillar -> miniboss -> boss door -> boss,
--- hitting every monster on the way (DungeonTargets.Pick decides).
+-- hitting every monster on the way (DungeonTargets.Pick decides). With
+-- nothing in sight it flies into the next room not visited yet
+-- (DungeonRooms), since monsters only spawn once someone gets there, and
+-- waits there Config.DUNGEON_ROOM_WAIT for them.
 --
 -- Attacking: skill Config.DUNGEON_SKILL_KEY every DUNGEON_SKILL_INTERVAL and
 -- the buff Config.DUNGEON_BUFF_KEY every DUNGEON_BUFF_INTERVAL, while the
@@ -13,7 +16,7 @@
 -- one on the way to a target. Normal monsters' skills are not dodged.
 return {
     Name = "AutoDungeon",
-    Dependencies = {"Config", "Settings", "SafeMove", "SkillWatcher", "DungeonTargets", "KeyPress", "GameAuto", "AutoHunt"},
+    Dependencies = {"Config", "Settings", "SafeMove", "SkillWatcher", "DungeonTargets", "DungeonRooms", "KeyPress", "GameAuto", "AutoHunt"},
 
     Start = function(Context)
         local Config = Context.Config
@@ -21,6 +24,7 @@ return {
         local SafeMove = Context.SafeMove
         local SkillWatcher = Context.SkillWatcher
         local DungeonTargets = Context.DungeonTargets
+        local DungeonRooms = Context.DungeonRooms
         local KeyPress = Context.KeyPress
         local GameAuto = Context.GameAuto
         local AutoHunt = Context.AutoHunt
@@ -341,6 +345,38 @@ return {
             return Targets
         end
 
+        --// Flies into Room; once there, waits up to DUNGEON_ROOM_WAIT for
+        --// its monsters to spawn.
+        local function VisitRoom(Room)
+            S.Target = nil
+            SafeMove.SetFacing(nil)
+            SetStatus("EXPLORING " .. Room.Name)
+
+            local Result, Why = SafeMove.StepToward(Room.Position, Config.DUNGEON_ROOM_ARRIVE)
+
+            if Result == "blocked" then
+                if Why ~= "no character" then
+                    DungeonRooms.NoteBlocked(Room, Why)
+                end
+
+                task.wait(Config.DUNGEON_TICK)
+                return
+            end
+
+            if Result ~= "arrived" then
+                DungeonRooms.NoteMoved(Room)
+                return
+            end
+
+            DungeonRooms.MarkDone(Room)
+            SetStatus("WAITING FOR MONSTERS IN " .. Room.Name)
+            local Deadline = os.clock() + Config.DUNGEON_ROOM_WAIT
+
+            while IsActive() and os.clock() < Deadline and #DungeonTargets.Scan() == 0 do
+                task.wait(Config.DUNGEON_TICK)
+            end
+        end
+
         local function CountSkipped(Targets)
             local Count = 0
 
@@ -393,6 +429,13 @@ return {
                 return Fight(Picked.Entry, Position, Hazards)
             end
 
+            local Room = DungeonRooms.Next(Position)
+
+            if Room then
+                S.IdleSince = nil
+                return VisitRoom(Room)
+            end
+
             local Door = DungeonTargets.FindDoor()
 
             if Door then
@@ -424,6 +467,7 @@ return {
                 AutoHunt:SetRunning(false)
                 GameAuto:Disable()
                 S.SawMajor, S.IdleSince, S.DoorTries = false, nil, 0
+                DungeonRooms.Reset()
             end
 
             Settings:Save()
