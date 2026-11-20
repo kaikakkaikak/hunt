@@ -206,7 +206,8 @@ return {
             DUNGEON_HOVER_OFFSET = 1.5,
             DUNGEON_STEP_STUDS = 14,
             DUNGEON_SWEEP_SIZE = { 2.5, 4, 2.5 },
-            --// Fly through when there is no clear way: along the path when
+            --// Only once the ritual pillar was a target (never before it):
+            --// fly through when there is no clear way: along the path when
             --// every leg of it is blocked, straight at the target when no
             --// path is found (off: such a target counts as blocked).
             DUNGEON_FLY_THROUGH_BLOCKED = true,

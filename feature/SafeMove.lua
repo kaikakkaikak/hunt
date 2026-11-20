@@ -8,7 +8,9 @@
 -- waypoint by waypoint, each leg checked the same way. Points with no floor
 -- under them (pits, out of the map) are never flown to.
 --
--- While Config.DUNGEON_FLY_THROUGH_BLOCKED is on, a way that cannot be
+-- While Config.DUNGEON_FLY_THROUGH_BLOCKED is on and the caller allows it
+-- (SetFlyThrough: AutoDungeon, once the ritual pillar was a target), a way
+-- that cannot be
 -- flown without touching anything is flown through anyway:
 --   "path blocked" (every leg of the path hits something, often an
 --   invisible part the game lets players through): the next waypoint;
@@ -366,6 +368,17 @@ return {
                 and os.clock() - Path.Since < PATH_MAX_AGE
         end
 
+        --// Off until the caller allows it (SetFlyThrough).
+        local FlyThroughAllowed = false
+
+        local function CanFlyThrough()
+            return Config.DUNGEON_FLY_THROUGH_BLOCKED and FlyThroughAllowed
+        end
+
+        function SafeMove.SetFlyThrough(Allowed)
+            FlyThroughAllowed = Allowed == true
+        end
+
         --// The furthest clear waypoint ahead on Path, moving its index
         --// there (never back), or nil when none is clear.
         local function AimOnPath(Path, From)
@@ -397,7 +410,7 @@ return {
             end
 
             if not S.Path then
-                return Config.DUNGEON_FLY_THROUGH_BLOCKED and Target or nil, "no path"
+                return CanFlyThrough() and Target or nil, "no path"
             end
 
             local Point = S.Path.Index <= #S.Path.Points and AimOnPath(S.Path, From)
@@ -408,7 +421,7 @@ return {
                 Point = S.Path and AimOnPath(S.Path, From)
             end
 
-            if not Point and S.Path and Config.DUNGEON_FLY_THROUGH_BLOCKED then
+            if not Point and S.Path and CanFlyThrough() then
                 --// The path still says where to go: follow it through.
                 local Points = S.Path.Points
                 local Index = math.min(Core.AdvanceIndex(Points, S.Path.Index, From.X, From.Z, WAYPOINT_REACHED), #Points)
@@ -416,7 +429,7 @@ return {
                 return Points[Index]
             end
 
-            if not Point and not S.Path and Config.DUNGEON_FLY_THROUGH_BLOCKED then
+            if not Point and not S.Path and CanFlyThrough() then
                 return Target
             end
 

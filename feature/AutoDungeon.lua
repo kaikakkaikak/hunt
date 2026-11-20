@@ -75,6 +75,8 @@ return {
                 SawMajor = false,
                 --// The final boss was seen alive this run.
                 SawFinal = false,
+                --// The pillar was a target this run: walls may be flown through.
+                SawPillar = false,
                 --// The run's end: { Since, ChestUsed, Clicks, ClickedAt }, or nil.
                 Ending = nil,
                 --// The dungeon folder this run is in.
@@ -353,6 +355,12 @@ return {
         local function Fight(Target, Position, Hazards)
             if not S.Target or S.Target.Model ~= Target.Model then
                 print(string.format("[AutoDungeon] Target: %s (%s)", Target.Name, Target.Kind))
+
+                if Target.Kind == "pillar" and not S.SawPillar then
+                    S.SawPillar = true
+                    SafeMove.SetFlyThrough(true)
+                    print("[AutoDungeon] Pillar reached: walls may be flown through from now on")
+                end
                 S.Side[Target.Model] = nil
 
                 if Target.Kind == "major" and Data.DungeonBackstab then
@@ -535,7 +543,8 @@ return {
         --// A new run: every room and box start over. The game's auto is
         --// left as it is (pressing it here would toggle it off).
         local function ResetRun()
-            S.SawMajor, S.SawFinal, S.Ending, S.IdleSince = false, false, nil, nil
+            S.SawMajor, S.SawFinal, S.SawPillar, S.Ending, S.IdleSince = false, false, false, nil, nil
+            SafeMove.SetFlyThrough(false)
             S.Target = nil
             S.PromptTries = setmetatable({}, { __mode = "k" })
             S.RunRoot = DungeonTargets.GetRoot()
