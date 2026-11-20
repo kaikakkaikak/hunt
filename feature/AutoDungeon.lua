@@ -17,12 +17,17 @@
 -- used) before the next room. Checking rooms and collecting boxes can each
 -- be switched off in the UI (Settings.Data.DungeonRooms / DungeonLoot).
 --
+-- The end: once the final boss (Config.DUNGEON_FINAL_BOSS_NAMES) has been
+-- seen and is dead, the end chest is flown to and opened (always, whatever
+-- COLLECT BOXES says), then Replay is pressed on the summary that follows
+-- (DungeonEnd) and the next run starts from the first room.
+--
 -- While a miniboss or the boss is alive, its green safe zone (SkillWatcher)
 -- comes first and is flown into. Other warnings are only dodged with
 -- Config.DUNGEON_DODGE_DANGER on; by default the fight goes on behind it.
 return {
     Name = "AutoDungeon",
-    Dependencies = {"Config", "Settings", "SafeMove", "SkillWatcher", "DungeonTargets", "DungeonRooms", "KeyPress", "GameAuto", "AutoHunt"},
+    Dependencies = {"Config", "Settings", "SafeMove", "SkillWatcher", "DungeonTargets", "DungeonRooms", "DungeonEnd", "KeyPress", "GameAuto", "AutoHunt"},
 
     Start = function(Context)
         local Config = Context.Config
@@ -31,6 +36,7 @@ return {
         local SkillWatcher = Context.SkillWatcher
         local DungeonTargets = Context.DungeonTargets
         local DungeonRooms = Context.DungeonRooms
+        local DungeonEnd = Context.DungeonEnd
         local KeyPress = Context.KeyPress
         local GameAuto = Context.GameAuto
         local AutoHunt = Context.AutoHunt
@@ -68,6 +74,12 @@ return {
                 --// Mobs alive in the last scan.
                 Mobs = {},
                 SawMajor = false,
+                --// The final boss was seen alive this run.
+                SawFinal = false,
+                --// The run's end: { Since, ChestUsed, Clicks, ClickedAt }, or nil.
+                Ending = nil,
+                --// The dungeon folder this run is in.
+                RunRoot = nil,
                 IdleSince = nil,
             },
         }
@@ -482,6 +494,114 @@ return {
             task.wait(IDLE_WAIT)
         end
 
+        local function IsFinalBoss(Name)
+            local Normal = TargetCore.Normalize(Name)
+
+            for _, Wanted in ipairs(Config.DUNGEON_FINAL_BOSS_NAMES) do
+                if string.find(Normal, TargetCore.Normalize(Wanted), 1, true) then
+                    return true
+                end
+            end
+
+            return false
+        end
+
+        local function IsFinalAlive()
+            for _, Major in ipairs(S.Majors) do
+                if IsFinalBoss(Major.Name) then
+                    return true
+                end
+            end
+
+            return false
+        end
+
+        --// A new run: every room, box and the game's auto start over.
+        local function ResetRun()
+            S.SawMajor, S.SawFinal, S.Ending, S.IdleSince = false, false, nil, nil
+            S.Target = nil
+            S.PromptTries = setmetatable({}, { __mode = "k" })
+            S.RunRoot = DungeonTargets.GetRoot()
+            S.AutoRoot = nil
+            GameAuto:AssumeOff()
+            DungeonRooms.Reset()
+        end
+
+        --// Opens the end chest, then presses Replay on the summary.
+        local function FinishRun(Position)
+            local Ending = S.Ending
+
+            if not Ending.ChestUsed then
+                --// The nearest box once the boss is down is the end chest;
+                --// it is kept, so other rooms' boxes are not flown to.
+                Ending.Chest = Ending.Chest or DungeonTargets.FindLoot(Position, function(Prompt)
+                    return (S.PromptTries[Prompt] or 0) < Config.DUNGEON_LOOT_TRIES
+                end)
+
+                local Chest = Ending.Chest
+
+                if Chest then
+                    local Tries = S.PromptTries[Chest] or 0
+
+                    --// Opened (its prompt gone or switched off), or given up.
+                    if not Chest.Parent or not Chest.Enabled or Tries >= Config.DUNGEON_LOOT_TRIES then
+                        print("[AutoDungeon] End chest done")
+                        Ending.ChestUsed = true
+                        return
+                    end
+
+                    UsePrompt(Chest, Position, "OPENING THE END CHEST")
+                    return
+                end
+
+                --// The chest may take a moment to show up.
+                if os.clock() - Ending.Since < Config.DUNGEON_END_CHEST_WAIT then
+                    SafeMove.Release()
+                    SetStatus("WAITING FOR THE END CHEST")
+                    task.wait(IDLE_WAIT)
+                    return
+                end
+
+                Ending.ChestUsed = true
+            end
+
+            SafeMove.Release()
+            local Button = DungeonEnd.FindReplay()
+
+            if not Button then
+                if Ending.Clicks > 0 then
+                    --// The summary closed after our press: the next run.
+                    print("[AutoDungeon] Replay pressed: starting the next run")
+                    return ResetRun()
+                end
+
+                if os.clock() - Ending.Since >= Config.DUNGEON_REPLAY_WAIT then
+                    return Idle("DUNGEON CLEARED (no Replay button)")
+                end
+
+                SetStatus("WAITING FOR THE SUMMARY")
+                task.wait(IDLE_WAIT)
+                return
+            end
+
+            if Ending.Clicks >= Config.DUNGEON_REPLAY_CLICKS then
+                return Idle("REPLAY DOES NOT RESPOND")
+            end
+
+            if os.clock() - Ending.ClickedAt < Config.DUNGEON_REPLAY_RETRY then
+                task.wait(IDLE_WAIT)
+                return
+            end
+
+            --// Replay may teleport us: run again on the other side.
+            AutoHunt:QueueReload()
+            Ending.Clicks += 1
+            Ending.ClickedAt = os.clock()
+            SetStatus("PRESSING REPLAY (try " .. Ending.Clicks .. ")")
+            print("[AutoDungeon] Pressing Replay: " .. Button:GetFullName() .. " via " .. tostring(DungeonEnd.Press(Button)))
+            task.wait(IDLE_WAIT)
+        end
+
         local function Step()
             if not IsActive() then
                 SkillWatcher.SetEnabled(false)
@@ -498,9 +618,25 @@ return {
                 return Idle("WAITING FOR THE CHARACTER")
             end
 
+            if DungeonTargets.GetRoot() ~= S.RunRoot then
+                ResetRun()
+            end
+
             local Targets = Scan()
             SkillWatcher.SetEnabled(#S.Majors > 0)
             S.SawMajor = S.SawMajor or #S.Majors > 0
+
+            local FinalAlive = IsFinalAlive()
+            S.SawFinal = S.SawFinal or FinalAlive
+
+            if S.SawFinal and not FinalAlive and not S.Ending then
+                print("[AutoDungeon] Final boss down: opening the end chest")
+                S.Ending = { Since = os.clock(), ChestUsed = false, Clicks = 0, ClickedAt = -math.huge }
+            end
+
+            if S.Ending then
+                return FinishRun(Position)
+            end
 
             local Hazards, Zones = SkillWatcher.GetActive()
 
@@ -576,9 +712,7 @@ return {
                 GameAuto:AssumeOff()
                 S.AutoRoot, S.AutoWarned = DungeonTargets.GetRoot(), false
                 AutoHunt:SetRunning(false)
-                S.SawMajor, S.IdleSince = false, nil
-                S.PromptTries = setmetatable({}, { __mode = "k" })
-                DungeonRooms.Reset()
+                ResetRun()
             end
 
             Settings:Save()

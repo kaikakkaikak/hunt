@@ -181,6 +181,18 @@ return {
             DUNGEON_LOOT_KEYWORDS = {},
             DUNGEON_LOOT_SKIP_KEYWORDS = { "leave", "exit", "return", "lobby", "teleport", "quit" },
             DUNGEON_LOOT_TRIES = 3,
+
+            --// The end: this boss dying ends the run. The end chest is
+            --// waited for up to END_CHEST_WAIT seconds, the summary's Replay
+            --// button (a button with one of REPLAY_TEXTS) up to REPLAY_WAIT;
+            --// it is pressed every REPLAY_RETRY seconds, REPLAY_CLICKS times
+            --// at most, until the summary closes.
+            DUNGEON_FINAL_BOSS_NAMES = { "Skull King" },
+            DUNGEON_END_CHEST_WAIT = 8,
+            DUNGEON_REPLAY_TEXTS = { "replay", "play again", "retry" },
+            DUNGEON_REPLAY_WAIT = 30,
+            DUNGEON_REPLAY_RETRY = 3,
+            DUNGEON_REPLAY_CLICKS = 5,
             DUNGEON_DOOR_KEY = "E",
 
             --// Flying: WalkSpeed times this, this far above standing height,

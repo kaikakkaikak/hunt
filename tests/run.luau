@@ -22,6 +22,7 @@ local MoveCore = LoadSpec("feature/SafeMove.lua").Core
 local SkillCore = LoadSpec("feature/SkillWatcher.lua").Core
 local TargetCore = LoadSpec("feature/DungeonTargets.lua").Core
 local RoomCore = LoadSpec("feature/DungeonRooms.lua").Core
+local EndCore = LoadSpec("feature/DungeonEnd.lua").Core
 
 local Passed, Failed = 0, 0
 
@@ -723,6 +724,13 @@ Test("boxes: any prompt but a way out, or only the named ones", function()
     local Named = With({ DUNGEON_LOOT_KEYWORDS = { "chest" } })
     Equal(TargetCore.IsLootText({ "ProximityPrompt", "Open", "", "Chest" }, Named), true, "named box")
     Equal(TargetCore.IsLootText({ "ProximityPrompt", "Talk", "", "NPC" }, Named), false, "not named")
+end)
+
+Test("the summary's Replay button by its text", function()
+    Equal(EndCore.IsReplayText("REPLAY", Cfg), true, "replay")
+    Equal(EndCore.IsReplayText("ReplayButton", Cfg), true, "by name")
+    Equal(EndCore.IsReplayText("Play Again", Cfg), true, "play again")
+    Equal(EndCore.IsReplayText("Leave", Cfg), false, "leave")
 end)
 
 Test("the boss door is the Stone Door", function()

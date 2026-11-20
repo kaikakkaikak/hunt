@@ -601,6 +601,12 @@ return {
             HuntAtZone(Zone)
         end
 
+        --// Queues this script to run again after the next teleport (the
+        --// dungeon's Replay can move us to a new server). True when queued.
+        function AutoHunt:QueueReload()
+            return QueueReload()
+        end
+
         --// The UI's Hop Now: still comes back running on the next server.
         function AutoHunt:HopNow()
             Remember("MANUAL")
