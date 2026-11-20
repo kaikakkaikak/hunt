@@ -14,7 +14,8 @@
 -- Which one to fight next (Core.Pick): the ritual pillar, then the
 -- miniboss or boss, then monsters; the nearest of the same kind first.
 -- Monsters passed on the way are still hit (AutoDungeon attacks anything
--- in range). Nothing left to fight: the boss door's prompt is held open.
+-- in range). Nothing left to fight: the boxes in the rooms are collected
+-- (FindLoot), then the boss door's prompt is held open.
 local Core = {}
 
 --// "Bone hound", "Bone_Hound" and "BoneHound" are the same name.
@@ -77,6 +78,29 @@ function Core.IsDoorText(Texts, Cfg)
 end
 
 local PRIORITY = { pillar = 1, major = 2, mob = 3 }
+
+--// A prompt worth using to collect: none of DUNGEON_LOOT_SKIP_KEYWORDS (a
+--// way out of the dungeon), and one of DUNGEON_LOOT_KEYWORDS (any, when
+--// that list is empty).
+function Core.IsLootText(Texts, Cfg)
+    for _, Text in ipairs(Texts) do
+        if ContainsKeyword(Cfg.DUNGEON_LOOT_SKIP_KEYWORDS, string.lower(Text)) then
+            return false
+        end
+    end
+
+    if #Cfg.DUNGEON_LOOT_KEYWORDS == 0 then
+        return true
+    end
+
+    for _, Text in ipairs(Texts) do
+        if ContainsKeyword(Cfg.DUNGEON_LOOT_KEYWORDS, string.lower(Text)) then
+            return true
+        end
+    end
+
+    return false
+end
 
 --// Direction (X, Z) turned by Try eighths of a turn: try 0 is the
 --// direction itself, then 45, 90, ... degrees round the target.
@@ -209,6 +233,18 @@ return {
 
         DungeonTargets.IsAlive = IsAlive
 
+        --// Its health (Humanoid, else Health / HP attribute), or nil.
+        function DungeonTargets.GetHealth(Object)
+            local Humanoid = Object:FindFirstChildOfClass("Humanoid")
+
+            if Humanoid then
+                return Humanoid.Health
+            end
+
+            local Health = Object:GetAttribute("Health") or Object:GetAttribute("HP")
+            return type(Health) == "number" and Health or nil
+        end
+
         --// Everything left to fight: { Model, Kind, Name, Position, Radius }.
         --// A Humanoid, or a health attribute: a mesh model inside a
         --// monster has neither, so it is not taken for a second one.
@@ -218,6 +254,20 @@ return {
             end
 
             return type(Model:GetAttribute("Health") or Model:GetAttribute("HP")) == "number"
+        end
+
+        local function IsInsidePillar(Object)
+            local Node = Object.Parent
+
+            while Node and Node ~= workspace do
+                if Core.Kind(Node.Name, Config) == "pillar" then
+                    return true
+                end
+
+                Node = Node.Parent
+            end
+
+            return false
         end
 
         local function ScanNow()
@@ -239,22 +289,17 @@ return {
             end
 
             for _, Object in ipairs(workspace:GetDescendants()) do
-                if Object:IsA("Model") then
-                    local Kind = Core.Kind(Object.Name, Config)
+                local IsModel = Object:IsA("Model")
+                local Kind = (IsModel or Object:IsA("BasePart")) and Core.Kind(Object.Name, Config)
 
-                    if Kind and Kind ~= "pillar" and HasHealth(Object) and not IsPlayerCharacter(Object) and IsAlive(Object) then
+                if Kind == "pillar" then
+                    --// Every pillar standing (it is gone once broken), not a
+                    --// part of one named like it; Pick takes the nearest.
+                    if not IsInsidePillar(Object) and IsAlive(Object) then
                         Add(Object, Kind)
                     end
-                end
-            end
-
-            --// The pillar may sit outside the dungeon's folder; it standing
-            --// at all means it is not broken yet.
-            for _, Name in ipairs(Config.DUNGEON_PILLAR_NAMES) do
-                local Pillar = workspace:FindFirstChild(Name, true)
-
-                if Pillar and (Pillar:IsA("Model") or Pillar:IsA("BasePart")) and IsAlive(Pillar) then
-                    Add(Pillar, "pillar")
+                elseif Kind and IsModel and HasHealth(Object) and not IsPlayerCharacter(Object) and IsAlive(Object) then
+                    Add(Object, Kind)
                 end
             end
 
@@ -274,30 +319,64 @@ return {
             return Cached
         end
 
-        --// The boss door's enabled prompt, or nil.
-        function DungeonTargets.FindDoor()
+        local function PromptTexts(Prompt)
+            local Parent = Prompt.Parent
+            local Texts = { Prompt.Name, Prompt.ActionText, Prompt.ObjectText, Parent and Parent.Name or "" }
+
+            if Parent and Parent.Parent then
+                table.insert(Texts, Parent.Parent.Name)
+            end
+
+            return Texts
+        end
+
+        --// The dungeon's enabled prompts that have a place.
+        local function EnabledPrompts()
             local Root = DungeonTargets.GetRoot()
+            local Prompts = {}
 
             if not Root then
-                return nil
+                return Prompts
             end
 
             for _, Prompt in ipairs(Root:GetDescendants()) do
-                if Prompt:IsA("ProximityPrompt") and Prompt.Enabled then
-                    local Parent = Prompt.Parent
-                    local Texts = { Prompt.Name, Prompt.ActionText, Prompt.ObjectText, Parent and Parent.Name or "" }
+                if Prompt:IsA("ProximityPrompt") and Prompt.Enabled and Prompt.Parent and GetPosition(Prompt.Parent) then
+                    table.insert(Prompts, Prompt)
+                end
+            end
 
-                    if Parent and Parent.Parent then
-                        table.insert(Texts, Parent.Parent.Name)
-                    end
+            return Prompts
+        end
 
-                    if Core.IsDoorText(Texts, Config) and GetPosition(Parent) then
-                        return Prompt
-                    end
+        --// The boss door's enabled prompt, or nil.
+        function DungeonTargets.FindDoor()
+            for _, Prompt in ipairs(EnabledPrompts()) do
+                if Core.IsDoorText(PromptTexts(Prompt), Config) then
+                    return Prompt
                 end
             end
 
             return nil
+        end
+
+        --// The nearest box to collect (a prompt that is not the door nor a
+        --// way out) from Position, leaving out those CanTry says no to.
+        function DungeonTargets.FindLoot(Position, CanTry)
+            local Best, BestDistance = nil, math.huge
+
+            for _, Prompt in ipairs(EnabledPrompts()) do
+                local Texts = PromptTexts(Prompt)
+
+                if not Core.IsDoorText(Texts, Config) and Core.IsLootText(Texts, Config) and CanTry(Prompt) then
+                    local Distance = (GetPosition(Prompt.Parent) - Position).Magnitude
+
+                    if Distance < BestDistance then
+                        Best, BestDistance = Prompt, Distance
+                    end
+                end
+            end
+
+            return Best
         end
 
         local function HoldPrompt(Prompt)
@@ -328,9 +407,9 @@ return {
             end,
         }
 
-        --// Try number Try (1, 2, ...) at opening the door; we must be in
-        --// range already. True when a method could be used.
-        function DungeonTargets.OpenDoor(Prompt, Try)
+        --// Try number Try (1, 2, ...) at a prompt (the door, a box); we must
+        --// be in range already. True when a method could be used.
+        function DungeonTargets.UsePrompt(Prompt, Try)
             local Opener = OPENERS[(Try - 1) % #OPENERS + 1]
             local Ok, Used = pcall(Opener, Prompt)
             return Ok and Used == true

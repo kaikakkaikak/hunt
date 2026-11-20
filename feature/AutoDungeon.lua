@@ -8,14 +8,17 @@
 -- (DungeonRooms), since monsters only spawn once someone gets there, and
 -- waits there Config.DUNGEON_ROOM_WAIT for them.
 --
--- Attacking: skill Config.DUNGEON_SKILL_KEY every DUNGEON_SKILL_INTERVAL and
--- the buff Config.DUNGEON_BUFF_KEY every DUNGEON_BUFF_INTERVAL, while the
--- target is within Config.DUNGEON_ATTACK_RANGE.
+-- Attacking, while something is within Config.DUNGEON_ATTACK_RANGE: the
+-- game's own auto (Config.DUNGEON_ATTACK_MODE "auto"), or skill
+-- DUNGEON_SKILL_KEY every DUNGEON_SKILL_INTERVAL and the buff
+-- DUNGEON_BUFF_KEY every DUNGEON_BUFF_INTERVAL ("keys").
 --
--- While a miniboss or the boss is alive, its skill warnings (SkillWatcher)
--- come first: a green safe zone is flown into, a danger zone we stand in is
--- left for the nearest safe spot that keeps us close, and we do not fly into
--- one on the way to a target. Normal monsters' skills are not dodged.
+-- Once a room is cleared, the boxes in it are collected (their prompt is
+-- used) before the next room.
+--
+-- While a miniboss or the boss is alive, its green safe zone (SkillWatcher)
+-- comes first and is flown into. Other warnings are only dodged with
+-- Config.DUNGEON_DODGE_DANGER on; by default the fight goes on behind it.
 return {
     Name = "AutoDungeon",
     Dependencies = {"Config", "Settings", "SafeMove", "SkillWatcher", "DungeonTargets", "DungeonRooms", "KeyPress", "GameAuto", "AutoHunt"},
@@ -54,7 +57,11 @@ return {
                 Blocked = setmetatable({}, { __mode = "k" }),
                 --// Model -> which side of it is tried (TurnEighths).
                 Side = setmetatable({}, { __mode = "k" }),
-                DoorTries = 0,
+                --// Prompt -> times it was used (boxes, the door).
+                PromptTries = setmetatable({}, { __mode = "k" }),
+                --// Checking the game's auto took after a press:
+                --// { Since, Presses, Health, Model }, or nil.
+                AutoCheck = nil,
                 --// Majors alive in the last scan (for SourceIsMajor).
                 Majors = {},
                 --// Mobs alive in the last scan.
@@ -163,6 +170,46 @@ return {
             return false
         end
 
+        --// The game's auto: switched on once something is in range. The
+        --// button is a toggle we cannot read, so a press is checked: the
+        --// target's health not going down within AUTO_CONFIRM_SECONDS
+        --// means the press turned it off, and it is pressed again (up to
+        --// AUTO_CONFIRM_TRIES times per target).
+        local function KeepAutoOn()
+            local Target = S.Target
+            local Health = Target and DungeonTargets.GetHealth(Target.Model)
+
+            if not GameAuto:IsEnabled() then
+                GameAuto:Enable()
+                S.AutoCheck = { Since = os.clock(), Presses = 0, Health = Health, Model = Target and Target.Model }
+                return
+            end
+
+            local Check = S.AutoCheck
+
+            --// A new target starts a new check.
+            if not Check or Check.Model ~= (Target and Target.Model) then
+                S.AutoCheck = { Since = os.clock(), Presses = 0, Health = Health, Model = Target and Target.Model }
+                return
+            end
+
+            --// No health to watch (the pillar): nothing to check.
+            if not Health or not Check.Health then
+                Check.Since, Check.Health = os.clock(), Health
+                return
+            end
+
+            local Next = GameAuto.Core.NextCheck(Check, Health < Check.Health, os.clock(), Config)
+
+            if Next == "ok" then
+                Check.Since, Check.Health = os.clock(), Health
+            elseif Next == "press" then
+                GameAuto:Repress()
+                Check.Presses += 1
+                Check.Since, Check.Health = os.clock(), Health
+            end
+        end
+
         task.spawn(function()
             local SkillKey = Enum.KeyCode[Config.DUNGEON_SKILL_KEY]
             local BuffKey = Enum.KeyCode[Config.DUNGEON_BUFF_KEY]
@@ -170,12 +217,16 @@ return {
 
             while Lifetime.Alive do
                 if IsActive() and TargetInRange() then
-                    if os.clock() - LastBuff >= Config.DUNGEON_BUFF_INTERVAL then
-                        LastBuff = os.clock()
-                        KeyPress.Tap(BuffKey)
-                    end
+                    if Config.DUNGEON_ATTACK_MODE == "auto" then
+                        KeepAutoOn()
+                    else
+                        if os.clock() - LastBuff >= Config.DUNGEON_BUFF_INTERVAL then
+                            LastBuff = os.clock()
+                            KeyPress.Tap(BuffKey)
+                        end
 
-                    KeyPress.Tap(SkillKey)
+                        KeyPress.Tap(SkillKey)
+                    end
                 end
 
                 task.wait(Config.DUNGEON_SKILL_INTERVAL)
@@ -255,6 +306,8 @@ return {
         --// behind a boss or miniboss, on our side of anything else.
         --// A side we could not reach is replaced by the next one round it
         --// (S.Side), so a spot inside a wall or over a gap is not retried.
+        local UsePrompt
+
         local function ApproachPoint(Target, Position, Gap)
             local Away = Vector3.new(Position.X - Target.Position.X, 0, Position.Z - Target.Position.Z)
 
@@ -320,23 +373,25 @@ return {
             end
         end
 
-        --// Flies in front of the door (our side: the door itself is a wall)
-        --// and holds its prompt once in range.
-        local function OpenDoor(Prompt, Position)
-            local DoorPosition = DungeonTargets.GetPosition(Prompt.Parent)
+        --// Flies in front of a prompt's part (our side: a door is a wall)
+        --// and uses the prompt once in range: the boss door, a box.
+        function UsePrompt(Prompt, Position, Label)
+            local PromptPosition = DungeonTargets.GetPosition(Prompt.Parent)
             local Reach = math.max(Prompt.MaxActivationDistance * 0.6, 2)
 
             S.Target = nil
-            SafeMove.SetFacing(DoorPosition)
+            SafeMove.SetFacing(PromptPosition)
 
-            if Distance(Position, DoorPosition) > Prompt.MaxActivationDistance - 0.5 then
-                SetStatus("FLYING TO THE BOSS DOOR")
-                local Front = ApproachPoint({ Position = DoorPosition, Radius = 0 }, Position, Reach)
+            if Distance(Position, PromptPosition) > Prompt.MaxActivationDistance - 0.5 then
+                SetStatus(Label)
+                local Front = ApproachPoint({ Position = PromptPosition, Radius = 0 }, Position, Reach)
                 local Result, Why = SafeMove.StepToward(Front, APPROACH_ARRIVE)
 
                 if Result == "blocked" then
-                    SetStatus("BOSS DOOR UNREACHABLE: " .. tostring(Why))
-                    print("[AutoDungeon] Boss door unreachable: " .. tostring(Why))
+                    SetStatus(Label .. ": UNREACHABLE (" .. tostring(Why) .. ")")
+                    print(string.format("[AutoDungeon] %s unreachable: %s", Label, tostring(Why)))
+                    --// Counts as a try, so an unreachable box is given up on.
+                    S.PromptTries[Prompt] = (S.PromptTries[Prompt] or 0) + 1
                     task.wait(IDLE_WAIT)
                 end
 
@@ -346,9 +401,15 @@ return {
                 end
             end
 
-            S.DoorTries += 1
-            SetStatus("OPENING THE BOSS DOOR (try " .. S.DoorTries .. ")")
-            DungeonTargets.OpenDoor(Prompt, S.DoorTries)
+            local Try = (S.PromptTries[Prompt] or 0) + 1
+            S.PromptTries[Prompt] = Try
+            SetStatus(string.format("%s (try %d)", Label, Try))
+            print(string.format("[AutoDungeon] %s: %s, try %d", Label, Prompt:GetFullName(), Try))
+            DungeonTargets.UsePrompt(Prompt, Try)
+        end
+
+        local function OpenDoor(Prompt, Position)
+            UsePrompt(Prompt, Position, "OPENING THE BOSS DOOR")
         end
 
         ------------------------------------------------------------------------
@@ -456,6 +517,12 @@ return {
 
             local Hazards, Zones = SkillWatcher.GetActive()
 
+            --// Only the green safe zone is acted on unless dodging is on:
+            --// otherwise the fight goes on behind the boss.
+            if not Config.DUNGEON_DODGE_DANGER then
+                Hazards = {}
+            end
+
             if EnterSafeZone(Zones, Position) or Dodge(Hazards, Position) then
                 return
             end
@@ -465,6 +532,15 @@ return {
             if Picked then
                 S.IdleSince, S.DoorLogged = nil, false
                 return Fight(Picked.Entry, Position, Hazards)
+            end
+
+            local Loot = DungeonTargets.FindLoot(Position, function(Prompt)
+                return (S.PromptTries[Prompt] or 0) < Config.DUNGEON_LOOT_TRIES
+            end)
+
+            if Loot then
+                S.IdleSince = nil
+                return UsePrompt(Loot, Position, "COLLECTING " .. Loot.Parent.Name)
             end
 
             DungeonRooms.MarkNearby(Position)
@@ -505,17 +581,25 @@ return {
             if Data.Dungeon then
                 AutoHunt:SetRunning(false)
                 GameAuto:Disable()
-                S.SawMajor, S.IdleSince, S.DoorTries = false, nil, 0
+                S.SawMajor, S.IdleSince = false, nil
+                S.PromptTries = setmetatable({}, { __mode = "k" })
                 DungeonRooms.Reset()
             end
 
             Settings:Save()
 
             if not Data.Dungeon then
-                S.Target = nil
+                S.Target, S.AutoCheck = nil, nil
                 SafeMove.Release()
+                GameAuto:Disable()
             end
         end
+
+        Lifetime.OnEnd(function()
+            if Data.Dungeon then
+                GameAuto:Disable()
+            end
+        end)
 
         if Data.Dungeon and Data.Running then
             AutoHunt:SetRunning(false)

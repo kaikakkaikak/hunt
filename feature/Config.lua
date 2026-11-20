@@ -175,6 +175,12 @@ return {
             DUNGEON_ROOM_MAX = 40,
             --// A room skipped this many times is dropped for good.
             DUNGEON_ROOM_GIVE_UP_SKIPS = 2,
+            --// Boxes: any prompt in the dungeon that is not the door, unless
+            --// LOOT_KEYWORDS names them; never one with a SKIP keyword (a
+            --// way out). Each is tried at most LOOT_TRIES times.
+            DUNGEON_LOOT_KEYWORDS = {},
+            DUNGEON_LOOT_SKIP_KEYWORDS = { "leave", "exit", "return", "lobby", "teleport", "quit" },
+            DUNGEON_LOOT_TRIES = 3,
             DUNGEON_DOOR_KEY = "E",
 
             --// Flying: WalkSpeed times this, this far above standing height,
@@ -193,6 +199,9 @@ return {
             --// are fought before anything else (the ones on the way).
             DUNGEON_ATTACK_DISTANCE = 6,
             DUNGEON_ATTACK_RANGE = 14,
+            --// "auto": the game's own auto-fight (its button, see
+            --// AUTO_BUTTON_NAMES); "keys": the skill keys below.
+            DUNGEON_ATTACK_MODE = "auto",
             --// Enum.KeyCode names: skill 1 every 0.2s, the buff (skill 4)
             --// every BUFF_INTERVAL (pressing it on cooldown does nothing).
             DUNGEON_SKILL_KEY = "One",
@@ -225,6 +234,9 @@ return {
             DUNGEON_TELEGRAPH_MIN_SIZE = 6,
             --// A warning still there after this is forgotten.
             DUNGEON_TELEGRAPH_MAX_SECONDS = 8,
+            --// Leave the boss's danger warnings (off: only the green safe
+            --// zone is acted on, the fight goes on behind the boss).
+            DUNGEON_DODGE_DANGER = false,
             --// Dodge: stay this far outside a warning; look for a spot in
             --// rings DODGE_STEP apart, up to DODGE_MAX_DISTANCE away.
             DUNGEON_DODGE_MARGIN = 3,

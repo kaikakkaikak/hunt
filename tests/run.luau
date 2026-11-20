@@ -716,6 +716,15 @@ Test("the next room is the nearest one not visited or skipped", function()
     Equal(RoomCore.NextRoom({ Closer, Going }, At, "G"), Closer, "done: the next one")
 end)
 
+Test("boxes: any prompt but a way out, or only the named ones", function()
+    Equal(TargetCore.IsLootText({ "ProximityPrompt", "Open", "", "Chest" }, Cfg), true, "box")
+    Equal(TargetCore.IsLootText({ "ProximityPrompt", "Leave Dungeon", "", "Portal" }, Cfg), false, "way out")
+
+    local Named = With({ DUNGEON_LOOT_KEYWORDS = { "chest" } })
+    Equal(TargetCore.IsLootText({ "ProximityPrompt", "Open", "", "Chest" }, Named), true, "named box")
+    Equal(TargetCore.IsLootText({ "ProximityPrompt", "Talk", "", "NPC" }, Named), false, "not named")
+end)
+
 Test("the boss door is the Stone Door", function()
     Equal(TargetCore.IsDoorText({ "ProximityPrompt", "Hold", "", "Stone Door" }, Cfg), true, "stone door")
 end)
