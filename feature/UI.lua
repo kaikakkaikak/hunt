@@ -116,7 +116,7 @@ return {
         local Window = Create("Frame", {
             Size = UDim2.new(0, WIDTH, 0, 0),
             AutomaticSize = Enum.AutomaticSize.Y,
-            Position = UDim2.new(0, 20, 0.3, 0),
+            Position = UDim2.new(0, 20, 0.08, 0),
             BackgroundColor3 = COLOR.Window,
             Parent = Gui,
         })
