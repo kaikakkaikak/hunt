@@ -1,11 +1,14 @@
--- UI is a small draggable window: pick the boss to hunt, Start / Stop,
--- Hop After Kill, Auto Dungeon, Hop Now, Console, and the current status
--- (AutoDungeon's while it runs). Each boss shows
--- how many times it was killed.
+-- UI is a small draggable window with a nav bar on top to switch between
+-- two pages (the pick is saved):
+--   HUNT     pick the boss to hunt (each with its kills), Hop After Kill,
+--            Start / Stop and Hop Now;
+--   DUNGEON  Start / Stop the auto dungeon, and whether it checks the rooms
+--            (flies into each so its monsters spawn) and collects the boxes.
+-- The status line shows the open page's feature; Console is on both.
 --
--- The "-" button shrinks it to a bar with only the selected boss, its
--- kills and Play / Stop ("+" opens it again); the choice is saved, so it
--- stays small across hops.
+-- The "-" button shrinks it to a bar with only the selected boss (or the
+-- dungeon's status), its kills and Play / Stop ("+" opens it again); the
+-- choice is saved, so it stays small across hops.
 return {
     Name = "UI",
     Dependencies = {"Config", "Settings", "AutoHunt", "AutoDungeon", "Widgets", "ConsolePanel"},
@@ -25,6 +28,7 @@ return {
         local WIDTH = 240
         local COMPACT_WIDTH = 220
         local SMALL_BUTTON = 26
+        local NAV_HEIGHT = 26
         local LIST_HEIGHT = 150
         local STATUS_REFRESH = 0.25
 
@@ -74,8 +78,35 @@ return {
             return Create("TextLabel", Properties)
         end
 
+        --// A column that grows with what is in it.
+        local function Page(Parent, Order)
+            local Frame = Create("Frame", {
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                BackgroundTransparency = 1,
+                LayoutOrder = Order,
+                Parent = Parent,
+            })
+
+            Create("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = Frame })
+            return Frame
+        end
+
+        --// A left-aligned button that reads "[x]  Text" when on.
+        local function CheckButton(Parent, Order)
+            local Button = Widgets.Button(Parent, "", Order)
+            Button.TextXAlignment = Enum.TextXAlignment.Left
+            Create("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = Button })
+            return Button
+        end
+
+        local function PaintCheck(Button, Text, IsOn)
+            Button.Text = (IsOn and "[x]  " or "[  ]  ") .. Text
+            Button.BackgroundColor3 = IsOn and COLOR.On or COLOR.Row
+        end
+
         ------------------------------------------------------------------------
-        --// Full window
+        --// Full window: title, nav, status, the open page, console
         ------------------------------------------------------------------------
 
         local Window = Create("Frame", {
@@ -103,6 +134,13 @@ return {
 
         local Shrink = Widgets.Button(TitleBar, "-", 2, UDim2.fromOffset(SMALL_BUTTON, 22))
 
+        local Nav = Row(Window, NAV_HEIGHT, 2)
+        local HALF = UDim2.new(0.5, -2, 1, 0)
+        local Tabs = {
+            hunt = Widgets.Button(Nav, "HUNT", 1, HALF),
+            dungeon = Widgets.Button(Nav, "DUNGEON", 2, HALF),
+        }
+
         local Status = Label(Window, {
             Size = UDim2.new(1, 0, 0, 32),
             TextColor3 = COLOR.Dim,
@@ -110,17 +148,21 @@ return {
             TextSize = 12,
             TextWrapped = true,
             TextYAlignment = Enum.TextYAlignment.Top,
-            LayoutOrder = 2,
+            LayoutOrder = 3,
         })
+
+        --// Hunt page
+
+        local HuntPage = Page(Window, 4)
 
         --// Kills of the selected boss and of all bosses, kept across
         --// hops and game sessions by Settings.
-        local KillsLabel = Label(Window, {
+        local KillsLabel = Label(HuntPage, {
             Size = UDim2.new(1, 0, 0, 18),
             TextColor3 = COLOR.Text,
             Font = Enum.Font.GothamMedium,
             TextSize = 13,
-            LayoutOrder = 3,
+            LayoutOrder = 1,
         })
 
         local List = Create("ScrollingFrame", {
@@ -130,20 +172,29 @@ return {
             ScrollBarThickness = 4,
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
-            LayoutOrder = 4,
-            Parent = Window,
+            LayoutOrder = 2,
+            Parent = HuntPage,
         })
 
         Create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = List })
 
-        local HopAfterKill = Widgets.Button(Window, "", 5)
-        local DungeonButton = Widgets.Button(Window, "", 6)
-        local RunButton = Widgets.Button(Window, "", 7)
-        local HopNow = Widgets.Button(Window, "HOP NOW", 8)
-        local ConsoleButton = Widgets.Button(Window, "CONSOLE", 9)
+        local HopAfterKill = Widgets.Button(HuntPage, "", 3)
+        local RunButton = Widgets.Button(HuntPage, "", 4)
+        local HopNow = Widgets.Button(HuntPage, "HOP NOW", 5)
+
+        --// Dungeon page
+
+        local DungeonPage = Page(Window, 4)
+        local DungeonRun = Widgets.Button(DungeonPage, "", 1)
+        local CheckRooms = CheckButton(DungeonPage, 2)
+        local CollectBoxes = CheckButton(DungeonPage, 3)
+
+        local ConsoleButton = Widgets.Button(Window, "CONSOLE", 5)
+
+        local Pages = { hunt = HuntPage, dungeon = DungeonPage }
 
         ------------------------------------------------------------------------
-        --// Compact bar: boss, kills, Play / Stop
+        --// Compact bar: boss (or dungeon), kills, Play / Stop
         ------------------------------------------------------------------------
 
         local Compact = Create("Frame", {
@@ -212,16 +263,34 @@ return {
             end
         end
 
+        local function PaintRun(Button, IsRunning, StartText)
+            Button.Text = IsRunning and "STOP" or StartText
+            Button.BackgroundColor3 = IsRunning and COLOR.Off or COLOR.On
+        end
+
         local function PaintControls()
             HopAfterKill.Text = "HOP AFTER KILL: " .. (Data.HopAfterKill and "ON" or "OFF")
-            DungeonButton.Text = "AUTO DUNGEON: " .. (Data.Dungeon and "ON" or "OFF")
-            DungeonButton.BackgroundColor3 = Data.Dungeon and COLOR.On or COLOR.Row
-            RunButton.Text = Data.Running and "STOP" or "START"
+            PaintRun(RunButton, Data.Running, "START")
+            PaintRun(DungeonRun, Data.Dungeon, "START DUNGEON")
+            PaintCheck(CheckRooms, "CHECK ROOMS", Data.DungeonRooms)
+            PaintCheck(CollectBoxes, "COLLECT BOXES", Data.DungeonLoot)
             --// The compact bar's button stops whichever is running.
-            local AnyRunning = Data.Running or Data.Dungeon
-            CompactRun.Text = AnyRunning and "STOP" or "PLAY"
-            RunButton.BackgroundColor3 = Data.Running and COLOR.Off or COLOR.On
-            CompactRun.BackgroundColor3 = AnyRunning and COLOR.Off or COLOR.On
+            PaintRun(CompactRun, Data.Running or Data.Dungeon, "PLAY")
+        end
+
+        local function PaintStatus()
+            local Source = Data.Tab == "dungeon" and AutoDungeon or AutoHunt
+            Status.Text = "STATUS: " .. Source:GetStatus()
+        end
+
+        local function ShowTab()
+            for Name, Frame in pairs(Pages) do
+                local IsOpen = Name == Data.Tab
+                Frame.Visible = IsOpen
+                Tabs[Name].BackgroundColor3 = IsOpen and COLOR.On or COLOR.Row
+            end
+
+            PaintStatus()
         end
 
         --// Shows the full window or the compact bar, at the same spot.
@@ -244,12 +313,18 @@ return {
         --// Input
         ------------------------------------------------------------------------
 
+        for Name, Button in pairs(Tabs) do
+            Lifetime.Connect(Button.Activated, function()
+                Data.Tab = Name
+                Settings:Save()
+                ShowTab()
+            end)
+        end
+
         --// Only one boss at a time: picking one drops the other, picking
         --// the selected one again clears it.
         for Index, Name in ipairs(Config.BOSS_NAMES) do
-            local Button = Widgets.Button(List, "", Index)
-            Button.TextXAlignment = Enum.TextXAlignment.Left
-            Create("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = Button })
+            local Button = CheckButton(List, Index)
             BossButtons[Name] = Button
 
             Lifetime.Connect(Button.Activated, function()
@@ -260,13 +335,19 @@ return {
             end)
         end
 
-        Lifetime.Connect(HopAfterKill.Activated, function()
-            Data.HopAfterKill = not Data.HopAfterKill
-            Settings:Save()
-            PaintControls()
-        end)
+        local function Toggle(Button, Key)
+            Lifetime.Connect(Button.Activated, function()
+                Data[Key] = not Data[Key]
+                Settings:Save()
+                PaintControls()
+            end)
+        end
 
-        Lifetime.Connect(DungeonButton.Activated, function()
+        Toggle(HopAfterKill, "HopAfterKill")
+        Toggle(CheckRooms, "DungeonRooms")
+        Toggle(CollectBoxes, "DungeonLoot")
+
+        Lifetime.Connect(DungeonRun.Activated, function()
             AutoDungeon:SetRunning(not Data.Dungeon)
             PaintControls()
         end)
@@ -283,8 +364,12 @@ return {
         Lifetime.Connect(CompactRun.Activated, function()
             if Data.Dungeon then
                 AutoDungeon:SetRunning(false)
+            elseif Data.Running then
+                AutoHunt:SetRunning(false)
+            elseif Data.Tab == "dungeon" then
+                AutoDungeon:SetRunning(true)
             else
-                AutoHunt:SetRunning(not Data.Running)
+                AutoHunt:SetRunning(true)
             end
 
             PaintControls()
@@ -313,12 +398,12 @@ return {
         PaintAllBosses()
         PaintKills()
         PaintControls()
+        ShowTab()
         ApplySize()
 
         task.spawn(function()
             while Lifetime.Alive do
-                local Source = AutoDungeon:IsRunning() and AutoDungeon or AutoHunt
-                Status.Text = "STATUS: " .. Source:GetStatus()
+                PaintStatus()
                 --// Picks up new kill counts and a Stop from elsewhere.
                 PaintAllBosses()
                 PaintKills()

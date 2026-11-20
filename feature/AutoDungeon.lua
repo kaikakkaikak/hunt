@@ -14,7 +14,8 @@
 -- DUNGEON_BUFF_KEY every DUNGEON_BUFF_INTERVAL ("keys").
 --
 -- Once a room is cleared, the boxes in it are collected (their prompt is
--- used) before the next room.
+-- used) before the next room. Checking rooms and collecting boxes can each
+-- be switched off in the UI (Settings.Data.DungeonRooms / DungeonLoot).
 --
 -- While a miniboss or the boss is alive, its green safe zone (SkillWatcher)
 -- comes first and is flown into. Other warnings are only dodged with
@@ -534,7 +535,8 @@ return {
                 return Fight(Picked.Entry, Position, Hazards)
             end
 
-            local Loot = DungeonTargets.FindLoot(Position, function(Prompt)
+            --// Both can be switched off in the UI (CHECK ROOMS, COLLECT BOXES).
+            local Loot = Data.DungeonLoot and DungeonTargets.FindLoot(Position, function(Prompt)
                 return (S.PromptTries[Prompt] or 0) < Config.DUNGEON_LOOT_TRIES
             end)
 
@@ -543,8 +545,12 @@ return {
                 return UsePrompt(Loot, Position, "COLLECTING " .. Loot.Parent.Name)
             end
 
-            DungeonRooms.MarkNearby(Position)
-            local Room = DungeonRooms.Next(Position)
+            local Room = nil
+
+            if Data.DungeonRooms then
+                DungeonRooms.MarkNearby(Position)
+                Room = DungeonRooms.Next(Position)
+            end
 
             if Room then
                 S.IdleSince = nil

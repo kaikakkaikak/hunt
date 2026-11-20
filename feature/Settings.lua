@@ -53,6 +53,11 @@ return {
                 Compact = false,
                 --// AutoDungeon is on.
                 Dungeon = false,
+                --// AutoDungeon flies into each room / collects the boxes.
+                DungeonRooms = true,
+                DungeonLoot = true,
+                --// The UI page open: "hunt" or "dungeon".
+                Tab = "hunt",
             },
         }
 
@@ -93,8 +98,14 @@ return {
                 Data.Compact = Saved.Compact
             end
 
-            if type(Saved.Dungeon) == "boolean" then
-                Data.Dungeon = Saved.Dungeon
+            for _, Key in ipairs({ "Dungeon", "DungeonRooms", "DungeonLoot" }) do
+                if type(Saved[Key]) == "boolean" then
+                    Data[Key] = Saved[Key]
+                end
+            end
+
+            if Saved.Tab == "hunt" or Saved.Tab == "dungeon" then
+                Data.Tab = Saved.Tab
             end
 
             if Saved.Kills ~= nil then
