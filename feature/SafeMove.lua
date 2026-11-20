@@ -114,6 +114,16 @@ return {
             Params.FilterType = Enum.RaycastFilterType.Exclude
             Params.FilterDescendantsInstances = Exclude
             Params.RespectCanCollide = true
+
+            --// Only what our character really bumps into: games put
+            --// invisible zone parts in groups that do not collide with
+            --// players, and those are not walls.
+            local _, _, Root = GetCharacter()
+
+            if Root then
+                Params.CollisionGroup = Root.CollisionGroup
+            end
+
             return Params
         end
 

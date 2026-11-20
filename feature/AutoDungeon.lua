@@ -236,6 +236,7 @@ return {
         end
 
         local function NoteBlocked(Target, Why)
+            print(string.format("[AutoDungeon] Blocked on the way to %s: %s", Target.Name, tostring(Why)))
             local Count = (S.Blocked[Target.Model] or 0) + 1
             S.Blocked[Target.Model] = Count
 
@@ -295,6 +296,7 @@ return {
 
                 if Result == "blocked" then
                     SetStatus("BOSS DOOR UNREACHABLE: " .. tostring(Why))
+                    print("[AutoDungeon] Boss door unreachable: " .. tostring(Why))
                     task.wait(IDLE_WAIT)
                 end
 
@@ -339,6 +341,18 @@ return {
             return Targets
         end
 
+        local function CountSkipped(Targets)
+            local Count = 0
+
+            for _, Target in ipairs(Targets) do
+                if Target.Skipped then
+                    Count += 1
+                end
+            end
+
+            return Count
+        end
+
         local function Idle(Text)
             S.Target = nil
             SafeMove.Release()
@@ -375,7 +389,7 @@ return {
             local Picked = TargetCore.Pick(Targets, Flat(Position), Config)
 
             if Picked then
-                S.IdleSince = nil
+                S.IdleSince, S.DoorLogged = nil, false
                 return Fight(Picked.Entry, Position, Hazards)
             end
 
@@ -383,6 +397,13 @@ return {
 
             if Door then
                 S.IdleSince = nil
+
+                if not S.DoorLogged then
+                    S.DoorLogged = true
+                    print(string.format("[AutoDungeon] No monster, pillar or boss found (%d in the scan, %d skipped): going to the boss door %s",
+                        #Targets, CountSkipped(Targets), Door:GetFullName()))
+                end
+
                 return OpenDoor(Door, Position)
             end
 

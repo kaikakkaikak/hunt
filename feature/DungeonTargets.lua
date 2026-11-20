@@ -1,12 +1,15 @@
 -- DungeonTargets finds what the dungeon (workspace[Config.DUNGEON_ROOT_NAME])
 -- has left to fight, and its boss door.
 --
--- Kinds: "pillar" (Config.DUNGEON_PILLAR_NAMES, anywhere in workspace: it is
--- there while it stands, gone once broken), "major" (a miniboss or the
--- boss: Config.DUNGEON_MAJOR_NAMES, or a name with one of
--- Config.DUNGEON_MAJOR_KEYWORDS in it) and "mob" (a living Humanoid named in
--- Config.DUNGEON_MOB_NAMES; any non-player one when that list is empty).
--- Names match ignoring case, spaces, "_" and "-".
+-- Kinds: "pillar" (Config.DUNGEON_PILLAR_NAMES: there while it stands,
+-- gone once broken), "major" (a miniboss or the boss:
+-- Config.DUNGEON_MAJOR_NAMES, or a name with one of
+-- Config.DUNGEON_MAJOR_KEYWORDS in it) and "mob" (Config.DUNGEON_MOB_NAMES;
+-- any non-player Humanoid when that list is empty). All are looked for in
+-- the whole workspace, not only the dungeon's folder. A name matches when it
+-- contains a listed one, ignoring case, spaces, "_" and "-" ("SheetGhost3"
+-- is a "Sheet Ghost"). A monster is alive while its Humanoid is, or its
+-- Health / HP attribute is above 0.
 --
 -- Which one to fight next (Core.Pick), matching the dungeon's order:
 --   1. a mob within Config.DUNGEON_ENGAGE_RADIUS: the ones on the way;
@@ -23,7 +26,7 @@ end
 
 local function MatchesName(List, Normal)
     for _, Wanted in ipairs(List) do
-        if Core.Normalize(Wanted) == Normal then
+        if string.find(Normal, Core.Normalize(Wanted), 1, true) then
             return true
         end
     end
@@ -172,11 +175,20 @@ return {
         DungeonTargets.IsAlive = IsAlive
 
         --// Everything left to fight: { Model, Kind, Name, Position, Radius }.
+        --// A Humanoid, or a health attribute: a mesh model inside a
+        --// monster has neither, so it is not taken for a second one.
+        local function HasHealth(Model)
+            if Model:FindFirstChildOfClass("Humanoid") then
+                return true
+            end
+
+            return type(Model:GetAttribute("Health") or Model:GetAttribute("HP")) == "number"
+        end
+
         local function ScanNow()
-            local Root = DungeonTargets.GetRoot()
             local Found = {}
 
-            if not Root then
+            if not DungeonTargets.GetRoot() then
                 return Found
             end
 
@@ -188,11 +200,11 @@ return {
                 end
             end
 
-            for _, Object in ipairs(Root:GetDescendants()) do
+            for _, Object in ipairs(workspace:GetDescendants()) do
                 if Object:IsA("Model") then
                     local Kind = Core.Kind(Object.Name, Config)
 
-                    if Kind and Kind ~= "pillar" and Object:FindFirstChildOfClass("Humanoid") and not IsPlayerCharacter(Object) and IsAlive(Object) then
+                    if Kind and Kind ~= "pillar" and HasHealth(Object) and not IsPlayerCharacter(Object) and IsAlive(Object) then
                         Add(Object, Kind)
                     end
                 end
@@ -213,7 +225,7 @@ return {
 
         --// ScanNow, reused for SCAN_CACHE seconds: a big map's descendants
         --// are too many to walk every frame.
-        local SCAN_CACHE = 0.15
+        local SCAN_CACHE = 0.3
         local Cached, CachedAt = nil, -math.huge
 
         function DungeonTargets.Scan()
