@@ -71,9 +71,12 @@ return {
 
             local Fired = false
 
+            --// Each handler runs in its own thread: run in ours, a game script's
+            --// handler can leave it without our permissions, and our next
+            --// line (repainting the UI) fails with "lacking capability".
             for _, Connection in ipairs(Connections) do
-                if pcall(function()
-                    Connection:Fire()
+                if pcall(task.spawn, function()
+                    pcall(Connection.Fire, Connection)
                 end) then
                     Fired = true
                 end

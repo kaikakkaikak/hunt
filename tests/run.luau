@@ -627,28 +627,39 @@ Test("the safe spot skips unusable points and stays near the boss", function()
     end), nil, "none usable")
 end)
 
-Test("targets: pillar, then boss or miniboss, then monsters", function()
+Test("targets: boss or miniboss, then pillar, then monsters", function()
     local At = { X = 0, Y = 0, Z = 0 }
     local Close = { Kind = "mob", X = 1, Y = 0, Z = 0 }
     local Far = { Kind = "mob", X = 200, Y = 0, Z = 0 }
     local Pillar = { Kind = "pillar", X = 300, Y = 0, Z = 0 }
     local Boss = { Kind = "major", X = 250, Y = 0, Z = 0 }
 
-    Equal(TargetCore.Pick({ Boss, Far, Close, Pillar }, At), Pillar, "pillar first")
-    Equal(TargetCore.Pick({ Far, Close, Boss }, At), Boss, "boss before monsters")
+    Equal(TargetCore.Pick({ Far, Close, Pillar, Boss }, At), Boss, "boss first")
+    Equal(TargetCore.Pick({ Far, Close, Pillar }, At), Pillar, "pillar before monsters")
     Equal(TargetCore.Pick({ Far, Close }, At), Close, "nearest monster")
     Equal(TargetCore.Pick({}, At), nil, "nothing")
 end)
 
+Test("the boss is not left for a monster close by", function()
+    local At = { X = 0, Y = 0, Z = 0 }
+    local Witch = { Id = "W", Kind = "major", X = 20, Y = 0, Z = 0 }
+    local Ghost = { Id = "G", Kind = "mob", X = 3, Y = 0, Z = 0, Visible = true }
+
+    Equal(TargetCore.Pick({ Witch, Ghost }, At, "W", Cfg), Witch, "kept on the boss")
+    Equal(TargetCore.Pick({ Witch, Ghost }, At, "G", Cfg), Witch, "back to the boss")
+end)
+
 Test("monsters close by come before the pillar, even while hitting it", function()
     local At = { X = 0, Y = 0, Z = 0 }
-    local Close = { Id = "M", Kind = "mob", X = 10, Y = 0, Z = 0 }
+    local Close = { Id = "M", Kind = "mob", X = 10, Y = 0, Z = 0, Visible = true }
+    local Walled = { Id = "B", Kind = "mob", X = 8, Y = 0, Z = 0, Visible = false }
     local Far = { Id = "F", Kind = "mob", X = 200, Y = 0, Z = 0 }
     local Pillar = { Id = "P", Kind = "pillar", X = 5, Y = 0, Z = 0 }
 
     Equal(TargetCore.Pick({ Pillar, Close, Far }, At, nil, Cfg), Close, "close mob first")
     Equal(TargetCore.Pick({ Pillar, Close, Far }, At, "P", Cfg), Close, "even off the pillar")
     Equal(TargetCore.Pick({ Pillar, Far }, At, "M", Cfg), Pillar, "then back to the pillar")
+    Equal(TargetCore.Pick({ Pillar, Walled }, At, "P", Cfg), Pillar, "not one behind a wall")
 end)
 
 Test("the target being fought is kept when another looks nearer", function()
@@ -744,6 +755,12 @@ Test("the summary's Replay button by its text", function()
     Equal(EndCore.IsReplayText("ReplayButton", Cfg), true, "by name")
     Equal(EndCore.IsReplayText("Play Again", Cfg), true, "play again")
     Equal(EndCore.IsReplayText("Leave", Cfg), false, "leave")
+end)
+
+Test("only Skull King's death ends the run", function()
+    Equal(TargetCore.IsFinalBoss("Skull King", Cfg), true, "boss")
+    Equal(TargetCore.IsFinalBoss("SkullKing_Boss", Cfg), true, "boss, other spelling")
+    Equal(TargetCore.IsFinalBoss("Potion Witch", Cfg), false, "miniboss")
 end)
 
 Test("the boss door is the Stone Door", function()

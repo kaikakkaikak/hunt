@@ -11,10 +11,11 @@
 -- is a "Sheet Ghost"). A monster is alive while its Humanoid is, or its
 -- Health / HP attribute is above 0.
 --
--- Which one to fight next (Core.Pick): a monster within
--- Config.DUNGEON_ENGAGE_RADIUS (the game's auto goes for those first, and
--- does not hit the pillar while they are about), then the ritual pillar,
--- the miniboss or boss, then the other monsters; the nearest of the same
+-- Which one to fight next (Core.Pick): the miniboss or boss (never left
+-- for a monster while alive), then a monster we can see within
+-- Config.DUNGEON_ENGAGE_RADIUS (the game's auto goes for those, and does
+-- not hit the pillar while they are about; one behind a wall is not "near"),
+-- then the ritual pillar, then the other monsters; the nearest of the same
 -- kind first.
 -- Monsters passed on the way are still hit (AutoDungeon attacks anything
 -- in range). Nothing left to fight: the boxes in the rooms are collected
@@ -44,6 +45,11 @@ local function ContainsKeyword(List, Lower)
     end
 
     return false
+end
+
+--// The boss whose death ends the run (Cfg.DUNGEON_FINAL_BOSS_NAMES).
+function Core.IsFinalBoss(Name, Cfg)
+    return MatchesName(Cfg.DUNGEON_FINAL_BOSS_NAMES, Core.Normalize(Name))
 end
 
 --// "pillar", "major", "mob", or nil for a model that is not fought.
@@ -80,7 +86,9 @@ function Core.IsDoorText(Texts, Cfg)
     return false
 end
 
-local PRIORITY = { pillar = 1, major = 2, mob = 3 }
+local PRIORITY = { major = 1, pillar = 3, mob = 4 }
+--// A monster close by and in sight: before the pillar, after a boss.
+local NEAR_MOB = 2
 
 --// A prompt worth using to collect: none of DUNGEON_LOOT_SKIP_KEYWORDS (a
 --// way out of the dungeon), and one of DUNGEON_LOOT_KEYWORDS (any, when
@@ -114,8 +122,8 @@ function Core.TurnEighths(X, Z, Try)
 end
 
 --// The target to fight from Position ({ X, Y, Z }), or nil. Targets =
---// { Id, Kind, X, Y, Z, Skipped }: a skipped one (could not be reached) is
---// left for later.
+--// { Id, Kind, X, Y, Z, Skipped, Visible }: a skipped one (could not be
+--// reached) is left for later; Visible = nothing solid between it and us.
 --//
 --// The one being fought (CurrentId) is kept while nothing of a better kind
 --// shows up: "nearest" is a straight line through walls, so on the way
@@ -130,8 +138,8 @@ function Core.Pick(Targets, Position, CurrentId, Cfg)
             local Distance = math.sqrt((Target.X - Position.X) ^ 2 + (Target.Y - Position.Y) ^ 2 + (Target.Z - Position.Z) ^ 2)
             local Rank = PRIORITY[Target.Kind] or math.huge
 
-            if Target.Kind == "mob" and Cfg and Distance <= Cfg.DUNGEON_ENGAGE_RADIUS then
-                Rank = 0
+            if Target.Kind == "mob" and Cfg and Target.Visible and Distance <= Cfg.DUNGEON_ENGAGE_RADIUS then
+                Rank = NEAR_MOB
             end
 
             if Rank < BestRank or (Rank == BestRank and Distance < BestDistance) then

@@ -298,8 +298,9 @@ return {
         --// A side we could not reach is replaced by the next one round it
         --// (S.Side), so a spot inside a wall or over a gap is not retried.
         local UsePrompt
+        local SightedApproach
 
-        local function ApproachPoint(Target, Position, Gap)
+        local function ApproachPoint(Target, Position, Gap, SideOverride)
             local Away = Vector3.new(Position.X - Target.Position.X, 0, Position.Z - Target.Position.Z)
 
             if Target.Kind == "major" and Target.Look and Data.DungeonBackstab then
@@ -308,9 +309,31 @@ return {
                 Away = Vector3.new(1, 0, 0)
             end
 
-            local Side = Target.Model and S.Side[Target.Model] or 0
+            local Side = SideOverride or (Target.Model and S.Side[Target.Model]) or 0
             local X, Z = TargetCore.TurnEighths(Away.Unit.X, Away.Unit.Z, Side)
             return Target.Position + Vector3.new(X, 0, Z) * (Target.Radius + (Gap or Config.DUNGEON_ATTACK_DISTANCE))
+        end
+
+        --// The spot to hit Target from, starting at the wanted side and
+        --// going round it until one has floor and the target in sight: a
+        --// spot behind a wall from it would never hit it.
+        function SightedApproach(Target, Position)
+            local First = Target.Model and S.Side[Target.Model] or 0
+
+            for Turn = 0, 7 do
+                local Point = ApproachPoint(Target, Position, nil, First + Turn)
+                local Hover = SafeMove.HoverPoint(Point)
+
+                if Hover and SafeMove.CanSee(Hover, Target.Position) then
+                    if Turn > 0 and Target.Model then
+                        S.Side[Target.Model] = First + Turn
+                    end
+
+                    return Point
+                end
+            end
+
+            return ApproachPoint(Target, Position)
         end
 
         local function NoteBlocked(Target, Why)
@@ -342,7 +365,7 @@ return {
             SafeMove.SetFacing(Target.Position)
             SetStatus(string.format("FIGHTING %s (%s)", Target.Name, Target.Kind))
 
-            local Point = ApproachPoint(Target, Position)
+            local Point = SightedApproach(Target, Position)
 
             --// Never fly into a warning: wait it out where we are.
             if SkillCore.InAny(Hazards, Point.X, Point.Z, Config.DUNGEON_DODGE_MARGIN) then
@@ -416,7 +439,7 @@ return {
         --// Main loop
         ------------------------------------------------------------------------
 
-        local function Scan()
+        local function Scan(Position)
             local Now = os.clock()
             local Found = DungeonTargets.Scan()
             local Models, Majors, Mobs, Targets = {}, {}, {}, {}
@@ -435,6 +458,10 @@ return {
                 Pickable.Entry = Entry
                 Pickable.Id = Entry.Model
                 Pickable.Skipped = (S.SkipUntil[Entry.Model] or 0) > Now
+                --// Only close monsters are asked (a ray each).
+                Pickable.Visible = Entry.Kind == "mob"
+                    and Distance(Position, Entry.Position) <= Config.DUNGEON_ENGAGE_RADIUS
+                    and SafeMove.CanSee(Position, Entry.Position)
                 table.insert(Targets, Pickable)
             end
 
@@ -495,21 +522,9 @@ return {
             task.wait(IDLE_WAIT)
         end
 
-        local function IsFinalBoss(Name)
-            local Normal = TargetCore.Normalize(Name)
-
-            for _, Wanted in ipairs(Config.DUNGEON_FINAL_BOSS_NAMES) do
-                if string.find(Normal, TargetCore.Normalize(Wanted), 1, true) then
-                    return true
-                end
-            end
-
-            return false
-        end
-
         local function IsFinalAlive()
             for _, Major in ipairs(S.Majors) do
-                if IsFinalBoss(Major.Name) then
+                if TargetCore.IsFinalBoss(Major.Name, Config) then
                     return true
                 end
             end
@@ -625,7 +640,7 @@ return {
                 print("[AutoDungeon] The dungeon's folder changed: going on")
             end
 
-            local Targets = Scan()
+            local Targets = Scan(Position)
             SkillWatcher.SetEnabled(#S.Majors > 0 and (Data.DungeonDodge or Data.DungeonSafeZone))
             S.SawMajor = S.SawMajor or #S.Majors > 0
 

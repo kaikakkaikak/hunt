@@ -207,6 +207,18 @@ return {
             return Hit == nil
         end
 
+        --// Nothing solid (walls, not enemies or players) on the straight
+        --// line From -> To: an attack from From can reach To.
+        function SafeMove.CanSee(From, To)
+            local Offset = To - From
+
+            if Offset.Magnitude < 0.05 then
+                return true
+            end
+
+            return workspace:Raycast(From, Offset, BuildParams()) == nil
+        end
+
         --// Where the character is (held), or nil without a live one.
         function SafeMove.GetPosition()
             local _, _, Root = GetCharacter()
