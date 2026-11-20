@@ -1,10 +1,12 @@
 -- DungeonTargets finds what the dungeon (workspace[Config.DUNGEON_ROOT_NAME])
 -- has left to fight, and its boss door.
 --
--- Kinds: "pillar" (Config.DUNGEON_PILLAR_NAMES), "major" (a miniboss or the
+-- Kinds: "pillar" (Config.DUNGEON_PILLAR_NAMES, anywhere in workspace: it is
+-- there while it stands, gone once broken), "major" (a miniboss or the
 -- boss: Config.DUNGEON_MAJOR_NAMES, or a name with one of
--- Config.DUNGEON_MAJOR_KEYWORDS in it) and "mob" (any other living Humanoid
--- that is not a player).
+-- Config.DUNGEON_MAJOR_KEYWORDS in it) and "mob" (a living Humanoid named in
+-- Config.DUNGEON_MOB_NAMES; any non-player one when that list is empty).
+-- Names match ignoring case, spaces, "_" and "-".
 --
 -- Which one to fight next (Core.Pick), matching the dungeon's order:
 --   1. a mob within Config.DUNGEON_ENGAGE_RADIUS: the ones on the way;
@@ -14,9 +16,14 @@
 -- Nothing left to fight: the boss door's prompt is held open.
 local Core = {}
 
-local function MatchesName(List, Lower)
+--// "Bone hound", "Bone_Hound" and "BoneHound" are the same name.
+function Core.Normalize(Name)
+    return (string.gsub(string.lower(Name), "[%s_%-]", ""))
+end
+
+local function MatchesName(List, Normal)
     for _, Wanted in ipairs(List) do
-        if string.lower(Wanted) == Lower then
+        if Core.Normalize(Wanted) == Normal then
             return true
         end
     end
@@ -34,18 +41,23 @@ local function ContainsKeyword(List, Lower)
     return false
 end
 
+--// "pillar", "major", "mob", or nil for a model that is not fought.
 function Core.Kind(Name, Cfg)
-    local Lower = string.lower(Name)
+    local Normal = Core.Normalize(Name)
 
-    if MatchesName(Cfg.DUNGEON_PILLAR_NAMES, Lower) then
+    if MatchesName(Cfg.DUNGEON_PILLAR_NAMES, Normal) then
         return "pillar"
     end
 
-    if MatchesName(Cfg.DUNGEON_MAJOR_NAMES, Lower) or ContainsKeyword(Cfg.DUNGEON_MAJOR_KEYWORDS, Lower) then
+    if MatchesName(Cfg.DUNGEON_MAJOR_NAMES, Normal) or ContainsKeyword(Cfg.DUNGEON_MAJOR_KEYWORDS, string.lower(Name)) then
         return "major"
     end
 
-    return "mob"
+    if #Cfg.DUNGEON_MOB_NAMES == 0 or MatchesName(Cfg.DUNGEON_MOB_NAMES, Normal) then
+        return "mob"
+    end
+
+    return nil
 end
 
 --// Any of the texts has a door keyword in it (no keywords: any text does).
@@ -168,18 +180,31 @@ return {
                 return Found
             end
 
+            local function Add(Object, Kind)
+                local Position = GetPosition(Object)
+
+                if Position then
+                    table.insert(Found, { Model = Object, Kind = Kind, Name = Object.Name, Position = Position, Radius = GetRadius(Object) })
+                end
+            end
+
             for _, Object in ipairs(Root:GetDescendants()) do
-                local IsModel = Object:IsA("Model")
-                local Kind = (IsModel or Object:IsA("BasePart")) and Core.Kind(Object.Name, Config)
-                local IsCandidate = Kind == "pillar"
-                    or (Kind and IsModel and Object:FindFirstChildOfClass("Humanoid") ~= nil and not IsPlayerCharacter(Object))
+                if Object:IsA("Model") then
+                    local Kind = Core.Kind(Object.Name, Config)
 
-                if IsCandidate and IsAlive(Object) then
-                    local Position = GetPosition(Object)
-
-                    if Position then
-                        table.insert(Found, { Model = Object, Kind = Kind, Name = Object.Name, Position = Position, Radius = GetRadius(Object) })
+                    if Kind and Kind ~= "pillar" and Object:FindFirstChildOfClass("Humanoid") and not IsPlayerCharacter(Object) and IsAlive(Object) then
+                        Add(Object, Kind)
                     end
+                end
+            end
+
+            --// The pillar may sit outside the dungeon's folder; it standing
+            --// at all means it is not broken yet.
+            for _, Name in ipairs(Config.DUNGEON_PILLAR_NAMES) do
+                local Pillar = workspace:FindFirstChild(Name, true)
+
+                if Pillar and (Pillar:IsA("Model") or Pillar:IsA("BasePart")) and IsAlive(Pillar) then
+                    Add(Pillar, "pillar")
                 end
             end
 

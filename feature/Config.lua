@@ -149,14 +149,20 @@ return {
 
             --// The dungeon's folder in workspace; everything is looked for in it.
             DUNGEON_ROOT_NAME = "Halloween",
-            DUNGEON_PILLAR_NAMES = { "Ritual Pillar", "RitualPillar" },
-            --// TODO: the miniboss's and the boss's model names. Until then a
-            --// name with a keyword in it counts as one.
-            DUNGEON_MAJOR_NAMES = {},
+            --// Names match ignoring case, spaces, "_" and "-". The pillar is
+            --// looked for in all of workspace: there = standing.
+            DUNGEON_PILLAR_NAMES = { "Ritual Pillar" },
+            --// Only these are fought as monsters (empty: any Humanoid that
+            --// is not a player).
+            DUNGEON_MOB_NAMES = { "Sheet Ghost", "Skull Bat", "Zombie Scarecrow", "Bone Hound" },
+            --// The miniboss and the boss: their skills are dodged. A name
+            --// with a keyword in it counts too.
+            DUNGEON_MAJOR_NAMES = { "Potion Witch", "Skull King" },
             DUNGEON_MAJOR_KEYWORDS = { "boss" },
-            --// The boss door's ProximityPrompt: one whose name, texts or
-            --// parent's name have a keyword in it (empty: any prompt).
-            DUNGEON_DOOR_KEYWORDS = { "door", "gate", "open" },
+            --// The boss door's ProximityPrompt: one whose name, texts,
+            --// parent's or grandparent's name have a keyword in it (empty:
+            --// any prompt).
+            DUNGEON_DOOR_KEYWORDS = { "stone door", "stonedoor", "door" },
             DUNGEON_DOOR_KEY = "E",
 
             --// Flying: WalkSpeed times this, this far above standing height,
