@@ -91,6 +91,9 @@ return {
             end
 
             S.Enabled = WantEnabled
+            --// Every press is logged: the button is a toggle, so a stray one
+            --// shows up as the auto going off.
+            print("[GameAuto] Pressed the auto button (now taken as " .. (WantEnabled and "on" or "off") .. ")")
             return true
         end
 

@@ -66,8 +66,6 @@ return {
                 Side = setmetatable({}, { __mode = "k" }),
                 --// Prompt -> times it was used (boxes, the door).
                 PromptTries = setmetatable({}, { __mode = "k" }),
-                --// The dungeon folder the game's auto was switched on in.
-                AutoRoot = nil,
                 AutoWarned = false,
                 --// Majors alive in the last scan (for SourceIsMajor).
                 Majors = {},
@@ -184,17 +182,10 @@ return {
         end
 
         --// The game's auto: pressed on once, the first time something is in
-        --// range in this dungeon. The game always has it off on entering, so
-        --// a new dungeon (a new folder) starts from off and one press is
-        --// enough; it is never pressed again to check.
+        --// range after START DUNGEON or joining a server (the game always
+        --// has it off on entering). Never pressed again while the run goes
+        --// on: the button is a toggle, so a second press switches it off.
         local function KeepAutoOn()
-            local Root = DungeonTargets.GetRoot()
-
-            if Root ~= S.AutoRoot then
-                S.AutoRoot = Root
-                GameAuto:AssumeOff()
-            end
-
             if GameAuto:IsEnabled() then
                 return
             end
@@ -516,14 +507,13 @@ return {
             return false
         end
 
-        --// A new run: every room, box and the game's auto start over.
+        --// A new run: every room and box start over. The game's auto is
+        --// left as it is (pressing it here would toggle it off).
         local function ResetRun()
             S.SawMajor, S.SawFinal, S.Ending, S.IdleSince = false, false, nil, nil
             S.Target = nil
             S.PromptTries = setmetatable({}, { __mode = "k" })
             S.RunRoot = DungeonTargets.GetRoot()
-            S.AutoRoot = nil
-            GameAuto:AssumeOff()
             DungeonRooms.Reset()
         end
 
@@ -618,8 +608,11 @@ return {
                 return Idle("WAITING FOR THE CHARACTER")
             end
 
+            --// The game swaps the dungeon's folder as it loads the next part
+            --// (after the pillar): the same run goes on, rooms stay done.
             if DungeonTargets.GetRoot() ~= S.RunRoot then
-                ResetRun()
+                S.RunRoot = DungeonTargets.GetRoot()
+                print("[AutoDungeon] The dungeon's folder changed: going on")
             end
 
             local Targets = Scan()
@@ -710,7 +703,7 @@ return {
                 --// Off on entering: believed, not pressed, so stopping the
                 --// hunt below cannot toggle it on by mistake.
                 GameAuto:AssumeOff()
-                S.AutoRoot, S.AutoWarned = DungeonTargets.GetRoot(), false
+                S.AutoWarned = false
                 AutoHunt:SetRunning(false)
                 ResetRun()
             end
