@@ -517,12 +517,24 @@ Test("stand height for R15 and R6", function()
     Equal(MoveCore.StandHeight(0, 2), 3, "R6")
 end)
 
-Test("a flat wide non-colliding part is a danger warning, a green one a safe zone", function()
-    local Red = { Name = "Effect", R = 255, G = 30, B = 30, SizeX = 20, SizeY = 0.5, SizeZ = 20, CanCollide = false }
-    local Green = { Name = "Effect", R = 40, G = 230, B = 60, SizeX = 20, SizeY = 0.5, SizeZ = 20, CanCollide = false }
+Test("a boss effect is a danger warning, a green one a safe zone", function()
+    local Red = { Name = "Circle", R = 255, G = 30, B = 30, SizeX = 20, SizeY = 0.5, SizeZ = 20, CanCollide = false, InFxFolder = true }
+    local Green = { Name = "Circle", R = 40, G = 230, B = 60, SizeX = 20, SizeY = 0.5, SizeZ = 20, CanCollide = false, InFxFolder = true }
+    local Dome = { Name = "Blast", R = 200, G = 0, B = 200, SizeX = 24, SizeY = 24, SizeZ = 24, CanCollide = false, InFxFolder = true }
+    local Beam = { Name = "Beam", R = 255, G = 0, B = 0, SizeX = 3, SizeY = 40, SizeZ = 3, CanCollide = false, InFxFolder = true }
 
     Equal(SkillCore.Classify(Red, Cfg), "avoid", "red")
     Equal(SkillCore.Classify(Green, Cfg), "goto", "green")
+    Equal(SkillCore.Classify(Dome, Cfg), "avoid", "dome")
+    Equal(SkillCore.Classify(Beam, Cfg), nil, "narrow beam")
+end)
+
+Test("outside the boss's folders nothing counts unless guessing is on", function()
+    local Ring = { Name = "Effect", R = 255, G = 30, B = 30, SizeX = 20, SizeY = 0.5, SizeZ = 20, CanCollide = false }
+    local Guess = With({ DUNGEON_DETECT_UNNAMED = true })
+
+    Equal(SkillCore.Classify(Ring, Cfg), nil, "off")
+    Equal(SkillCore.Classify(Ring, Guess), "avoid", "on")
 end)
 
 Test("walls, small bits and tall parts are not warnings", function()
@@ -530,9 +542,11 @@ Test("walls, small bits and tall parts are not warnings", function()
     local Spark = { Name = "Spark", R = 255, G = 0, B = 0, SizeX = 1, SizeY = 0.2, SizeZ = 1, CanCollide = false }
     local Beam = { Name = "Beam", R = 255, G = 0, B = 0, SizeX = 4, SizeY = 30, SizeZ = 4, CanCollide = false }
 
-    Equal(SkillCore.Classify(Wall, Cfg), nil, "wall")
-    Equal(SkillCore.Classify(Spark, Cfg), nil, "spark")
-    Equal(SkillCore.Classify(Beam, Cfg), nil, "beam")
+    local Guess = With({ DUNGEON_DETECT_UNNAMED = true })
+
+    Equal(SkillCore.Classify(Wall, Guess), nil, "wall")
+    Equal(SkillCore.Classify(Spark, Guess), nil, "spark")
+    Equal(SkillCore.Classify(Beam, Guess), nil, "beam")
 end)
 
 Test("named warnings count whatever their shape; unnamed ones only when allowed", function()

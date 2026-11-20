@@ -193,12 +193,15 @@ return {
             DUNGEON_DONE_SECONDS = 10,
             DUNGEON_TICK = 0.1,
 
-            --// Boss skill warnings. TODO: their part names, once known; until
-            --// then (DETECT_UNNAMED) any new flat, wide, non-colliding part
-            --// counts, green ones as the safe zone.
+            --// Boss skill warnings: the parts the boss and miniboss put in
+            --// these folders (anywhere in workspace), green = safe zone.
+            DUNGEON_SKILL_FX_FOLDERS = { "LumiBossFx", "LumiBossSkillFx" },
+            --// Parts counted by name wherever they are.
             DUNGEON_SKILL_PART_NAMES = {},
             DUNGEON_SAFE_ZONE_NAMES = {},
-            DUNGEON_DETECT_UNNAMED = true,
+            --// Also guess from shape outside the folders (flat, wide, not
+            --// colliding). Off: it can catch our own skills' effects.
+            DUNGEON_DETECT_UNNAMED = false,
             DUNGEON_SAFE_ZONE_BY_COLOR = true,
             DUNGEON_GREEN_MARGIN = 60,
             DUNGEON_TELEGRAPH_MAX_THICKNESS = 2,

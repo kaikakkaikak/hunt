@@ -1,12 +1,14 @@
 -- SkillWatcher spots the boss's skill warnings: parts that appear in
--- workspace while it is enabled and look like a telegraph, by name
--- (Config.DUNGEON_SKILL_PART_NAMES, DUNGEON_SAFE_ZONE_NAMES) or, when
--- Config.DUNGEON_DETECT_UNNAMED is on, by shape: flat, wide and not
--- collidable. A green one is a safe zone to fly into ("goto"); any other is
--- a danger zone to leave ("avoid").
+-- workspace while it is enabled, inside one of the boss's effect folders
+-- (Config.DUNGEON_SKILL_FX_FOLDERS: LumiBossFx, LumiBossSkillFx) and wide
+-- enough to stand in. A green one is a safe zone to fly into ("goto"); any
+-- other colour is a danger zone to leave ("avoid").
 --
--- Only warnings from a boss or miniboss count: SourceIsMajor (set by
--- AutoDungeon) decides, so a normal monster's skill is ignored.
+-- Also counted: parts named in Config.DUNGEON_SKILL_PART_NAMES /
+-- DUNGEON_SAFE_ZONE_NAMES and, with Config.DUNGEON_DETECT_UNNAMED on, any
+-- flat, wide, non-colliding part. Outside the effect folders only warnings
+-- from a boss or miniboss count: SourceIsMajor (set by AutoDungeon) decides,
+-- so a normal monster's skill is ignored.
 --
 -- Footprints (what a warning covers, seen from above) and the safe spot to
 -- dodge to are worked out on plain X / Z numbers in Core, tested in
@@ -30,8 +32,16 @@ function Core.IsGreen(R, G, B, Margin)
     return G - R >= Margin and G - B >= Margin
 end
 
+local function ByColor(Info, Cfg)
+    if Cfg.DUNGEON_SAFE_ZONE_BY_COLOR and Core.IsGreen(Info.R, Info.G, Info.B, Cfg.DUNGEON_GREEN_MARGIN) then
+        return "goto"
+    end
+
+    return "avoid"
+end
+
 --// "goto", "avoid" or nil for a new part. Info = { Name, R, G, B (0-255),
---// SizeX, SizeY, SizeZ, CanCollide }.
+--// SizeX, SizeY, SizeZ, CanCollide, InFxFolder }.
 function Core.Classify(Info, Cfg)
     if Matches(Cfg.DUNGEON_SAFE_ZONE_NAMES, Info.Name) then
         return "goto"
@@ -41,23 +51,25 @@ function Core.Classify(Info, Cfg)
         return "avoid"
     end
 
-    if not Cfg.DUNGEON_DETECT_UNNAMED or Info.CanCollide then
-        return nil
-    end
-
     local Sizes = { Info.SizeX, Info.SizeY, Info.SizeZ }
     table.sort(Sizes)
 
-    --// Flat (thin on one side) and wide on the other two.
-    if Sizes[1] > Cfg.DUNGEON_TELEGRAPH_MAX_THICKNESS or Sizes[2] < Cfg.DUNGEON_TELEGRAPH_MIN_SIZE then
+    --// Narrow on two sides (a beam, a spark): not an area to step out of.
+    if Sizes[2] < Cfg.DUNGEON_TELEGRAPH_MIN_SIZE then
         return nil
     end
 
-    if Cfg.DUNGEON_SAFE_ZONE_BY_COLOR and Core.IsGreen(Info.R, Info.G, Info.B, Cfg.DUNGEON_GREEN_MARGIN) then
-        return "goto"
+    --// The boss's own effects: any wide one, flat or not (a dome, a ring).
+    if Info.InFxFolder then
+        return ByColor(Info, Cfg)
     end
 
-    return "avoid"
+    --// Elsewhere: only flat, non-colliding parts, and only when allowed.
+    if not Cfg.DUNGEON_DETECT_UNNAMED or Info.CanCollide or Sizes[1] > Cfg.DUNGEON_TELEGRAPH_MAX_THICKNESS then
+        return nil
+    end
+
+    return ByColor(Info, Cfg)
 end
 
 --// What a part covers from above. Axes = its three sides as
@@ -214,7 +226,17 @@ return {
             return Part.Color
         end
 
-        local function Describe(Part)
+        local function IsInFxFolder(Part)
+            for _, Name in ipairs(Config.DUNGEON_SKILL_FX_FOLDERS) do
+                if Part:FindFirstAncestor(Name) then
+                    return true
+                end
+            end
+
+            return false
+        end
+
+        local function Describe(Part, InFxFolder)
             local Color = GetColor(Part)
 
             return {
@@ -222,6 +244,7 @@ return {
                 R = Color.R * 255, G = Color.G * 255, B = Color.B * 255,
                 SizeX = Part.Size.X, SizeY = Part.Size.Y, SizeZ = Part.Size.Z,
                 CanCollide = Part.CanCollide,
+                InFxFolder = InFxFolder,
             }
         end
 
@@ -230,9 +253,11 @@ return {
                 return
             end
 
-            local Kind = Core.Classify(Describe(Part), Config)
+            local InFxFolder = IsInFxFolder(Part)
+            local Kind = Core.Classify(Describe(Part, InFxFolder), Config)
 
-            if not Kind or not SkillWatcher.SourceIsMajor(Part) then
+            --// The boss's effect folders hold only its skills.
+            if not Kind or not (InFxFolder or SkillWatcher.SourceIsMajor(Part)) then
                 return
             end
 

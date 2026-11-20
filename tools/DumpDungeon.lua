@@ -75,6 +75,14 @@ else
     end
 end
 
+print("---- boss effect folders ----")
+
+for _, Object in ipairs(workspace:GetDescendants()) do
+    if Object.Name == "LumiBossFx" or Object.Name == "LumiBossSkillFx" then
+        print(Object:GetFullName() .. "  [" .. Object.ClassName .. "]  children=" .. #Object:GetChildren())
+    end
+end
+
 print(string.format("---- new parts for %ds: fight the boss now ----", WATCH_SECONDS))
 
 local Seen = {}
