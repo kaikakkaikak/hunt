@@ -5,7 +5,8 @@
 --   DUNGEON  Start / Stop the auto dungeon, and whether it checks the rooms
 --            (flies into each so its monsters spawn), collects the boxes,
 --            dodges the boss's skills, flies into its green safe zone and
---            hits the boss from behind.
+--            hits the boss from behind; and the miniboss / boss points it
+--            flies to after the pillar (stand there and press SET).
 -- The status line shows the open page's feature; Console is on both.
 --
 -- The "-" button shrinks it to a bar with only the selected boss (or the
@@ -13,13 +14,14 @@
 -- choice is saved, so it stays small across hops.
 return {
     Name = "UI",
-    Dependencies = {"Config", "Settings", "AutoHunt", "AutoDungeon", "Widgets", "ConsolePanel"},
+    Dependencies = {"Config", "Settings", "AutoHunt", "AutoDungeon", "DungeonPoints", "Widgets", "ConsolePanel"},
 
     Start = function(Context)
         local Config = Context.Config
         local Settings = Context.Settings
         local AutoHunt = Context.AutoHunt
         local AutoDungeon = Context.AutoDungeon
+        local DungeonPoints = Context.DungeonPoints
         local Widgets = Context.Widgets
         local ConsolePanel = Context.ConsolePanel
         local Lifetime = Context.Lifetime
@@ -193,6 +195,9 @@ return {
         local DodgeSkills = CheckButton(DungeonPage, 4)
         local SafeZone = CheckButton(DungeonPage, 5)
         local Backstab = CheckButton(DungeonPage, 6)
+        local SetMiniboss = Widgets.Button(DungeonPage, "", 7)
+        local SetBoss = Widgets.Button(DungeonPage, "", 8)
+        local ClearPoints = Widgets.Button(DungeonPage, "CLEAR POINTS", 9)
 
         local ConsoleButton = Widgets.Button(Window, "CONSOLE", 5)
 
@@ -273,6 +278,19 @@ return {
             Button.BackgroundColor3 = IsRunning and COLOR.Off or COLOR.On
         end
 
+        --// "SET MINIBOSS POINT" while not set, its place once set.
+        local function PaintPoint(Button, Name)
+            local Point = DungeonPoints.Get(Name)
+
+            if Point then
+                Button.Text = string.format("%s POINT: %d, %d, %d", string.upper(Name), math.floor(Point.X), math.floor(Point.Y), math.floor(Point.Z))
+                Button.BackgroundColor3 = COLOR.On
+            else
+                Button.Text = "SET " .. string.upper(Name) .. " POINT"
+                Button.BackgroundColor3 = COLOR.Row
+            end
+        end
+
         local function PaintControls()
             HopAfterKill.Text = "HOP AFTER KILL: " .. (Data.HopAfterKill and "ON" or "OFF")
             PaintRun(RunButton, Data.Running, "START")
@@ -282,6 +300,8 @@ return {
             PaintCheck(DodgeSkills, "DODGE BOSS SKILLS", Data.DungeonDodge)
             PaintCheck(SafeZone, "GREEN SAFE ZONE", Data.DungeonSafeZone)
             PaintCheck(Backstab, "HIT BOSS FROM BEHIND", Data.DungeonBackstab)
+            PaintPoint(SetMiniboss, "Miniboss")
+            PaintPoint(SetBoss, "Boss")
             --// The compact bar's button stops whichever is running.
             PaintRun(CompactRun, Data.Running or Data.Dungeon, "PLAY")
         end
@@ -357,6 +377,19 @@ return {
         Toggle(DodgeSkills, "DungeonDodge")
         Toggle(SafeZone, "DungeonSafeZone")
         Toggle(Backstab, "DungeonBackstab")
+
+        --// Pressing a point button sets it to where the character stands.
+        for Button, Name in pairs({ [SetMiniboss] = "Miniboss", [SetBoss] = "Boss" }) do
+            Lifetime.Connect(Button.Activated, function()
+                DungeonPoints.Set(Name)
+                PaintControls()
+            end)
+        end
+
+        Lifetime.Connect(ClearPoints.Activated, function()
+            DungeonPoints.Clear()
+            PaintControls()
+        end)
 
         Lifetime.Connect(DungeonRun.Activated, function()
             AutoDungeon:SetRunning(not Data.Dungeon)

@@ -28,7 +28,7 @@
 -- warning we stand in. With both off the fight goes on behind the boss.
 return {
     Name = "AutoDungeon",
-    Dependencies = {"Config", "Settings", "SafeMove", "SkillWatcher", "DungeonTargets", "DungeonRooms", "DungeonEnd", "DungeonAttack", "GameAuto", "AutoHunt"},
+    Dependencies = {"Config", "Settings", "SafeMove", "SkillWatcher", "DungeonTargets", "DungeonRooms", "DungeonEnd", "DungeonAttack", "DungeonPoints", "DungeonDodge", "GameAuto", "AutoHunt"},
 
     Start = function(Context)
         local Config = Context.Config
@@ -39,14 +39,14 @@ return {
         local DungeonRooms = Context.DungeonRooms
         local DungeonEnd = Context.DungeonEnd
         local DungeonAttack = Context.DungeonAttack
+        local DungeonPoints = Context.DungeonPoints
+        local DungeonDodge = Context.DungeonDodge
         local GameAuto = Context.GameAuto
         local AutoHunt = Context.AutoHunt
         local Lifetime = Context.Lifetime
         local SkillCore = SkillWatcher.Core
         local TargetCore = DungeonTargets.Core
 
-        --// Within this of a safe zone's centre counts as inside it.
-        local ZONE_ARRIVE = 1.5
         --// Within this of the point next to the target counts as there.
         local APPROACH_ARRIVE = 2
         local IDLE_WAIT = 0.5
@@ -186,71 +186,6 @@ return {
         DungeonAttack.Run(IsActive, TargetInRange, function()
             return S.Target and S.Target.Kind
         end)
-
-        ------------------------------------------------------------------------
-        --// Dodging
-        ------------------------------------------------------------------------
-
-        local function NearestMajor(Position)
-            local Best, BestGap = nil, math.huge
-
-            for _, Major in ipairs(S.Majors) do
-                local Gap = Distance(Position, Major.Position)
-
-                if Gap < BestGap then
-                    Best, BestGap = Major, Gap
-                end
-            end
-
-            return Best
-        end
-
-        --// Flies into the nearest green zone. True when there was one.
-        local function EnterSafeZone(Zones, Position)
-            if #Zones == 0 then
-                return false
-            end
-
-            table.sort(Zones, function(Left, Right)
-                return Distance(Left.Position, Position) < Distance(Right.Position, Position)
-            end)
-
-            SetStatus("SAFE ZONE")
-
-            if SafeMove.StepToward(Zones[1].Position, ZONE_ARRIVE) ~= "moved" then
-                task.wait(Config.DUNGEON_TICK)
-            end
-
-            return true
-        end
-
-        --// Leaves the danger zones we stand in. True while dodging.
-        local function Dodge(Hazards, Position)
-            if not SkillCore.InAny(Hazards, Position.X, Position.Z, Config.DUNGEON_DODGE_MARGIN) then
-                return false
-            end
-
-            local Major = NearestMajor(Position)
-            local Anchor = Major and { X = Major.Position.X, Z = Major.Position.Z }
-
-            local X, Z = SkillCore.FindSafeSpot(Position.X, Position.Z, Hazards, Anchor, Config, function(PX, PZ)
-                local Point = SafeMove.HoverPoint(Vector3.new(PX, Position.Y, PZ))
-                return Point ~= nil and SafeMove.IsClear(Position, Point)
-            end)
-
-            if not X then
-                SetStatus("DODGE: NO SAFE SPOT")
-                return false
-            end
-
-            SetStatus("DODGING")
-
-            if SafeMove.StepToward(Vector3.new(X, Position.Y, Z), APPROACH_ARRIVE) ~= "moved" then
-                task.wait(Config.DUNGEON_TICK)
-            end
-
-            return true
-        end
 
         ------------------------------------------------------------------------
         --// Fighting
@@ -447,17 +382,20 @@ return {
 
         --// Flies into Room; once there, waits up to DUNGEON_ROOM_WAIT for
         --// its monsters to spawn.
-        local function VisitRoom(Room)
+        --// Flies to Point (a room, a point set in the UI); once there,
+        --// waits up to DUNGEON_ROOM_WAIT for what spawns there. Hooks:
+        --// OnBlocked(Why), OnMoved(), OnArrived().
+        local function FlyAndWait(Point, Label, Hooks)
             S.Target = nil
             SafeMove.SetFacing(nil)
-            SetStatus("EXPLORING " .. Room.Name)
+            SetStatus(Label)
 
-            local Result, Why = SafeMove.StepToward(DungeonRooms.AimPoint(Room), Config.DUNGEON_ROOM_ARRIVE)
+            local Result, Why = SafeMove.StepToward(Point, Config.DUNGEON_ROOM_ARRIVE)
 
             if Result == "blocked" then
                 if Why ~= "no character" then
-                    print(string.format("[AutoDungeon] Blocked on the way to room %s: %s", Room.Name, tostring(Why)))
-                    DungeonRooms.NoteBlocked(Room, Why)
+                    print(string.format("[AutoDungeon] Blocked on the way to %s: %s", Label, tostring(Why)))
+                    Hooks.OnBlocked(Why)
                 end
 
                 task.wait(Config.DUNGEON_TICK)
@@ -465,17 +403,31 @@ return {
             end
 
             if Result ~= "arrived" then
-                DungeonRooms.NoteMoved(Room)
+                Hooks.OnMoved()
                 return
             end
 
-            DungeonRooms.MarkDone(Room)
-            SetStatus("WAITING FOR MONSTERS IN " .. Room.Name)
+            Hooks.OnArrived()
+            SetStatus("WAITING FOR MONSTERS: " .. Label)
             local Deadline = os.clock() + Config.DUNGEON_ROOM_WAIT
 
             while IsActive() and os.clock() < Deadline and #DungeonTargets.Scan() == 0 do
                 task.wait(Config.DUNGEON_TICK)
             end
+        end
+
+        local function VisitRoom(Room)
+            FlyAndWait(DungeonRooms.AimPoint(Room), "ROOM " .. Room.Name, {
+                OnBlocked = function(Why)
+                    DungeonRooms.NoteBlocked(Room, Why)
+                end,
+                OnMoved = function()
+                    DungeonRooms.NoteMoved(Room)
+                end,
+                OnArrived = function()
+                    DungeonRooms.MarkDone(Room)
+                end,
+            })
         end
 
         local function CountSkipped(Targets)
@@ -516,6 +468,18 @@ return {
             S.PromptTries = {}
             S.RunRoot = DungeonTargets.GetRoot()
             DungeonRooms.Reset()
+            DungeonPoints.Reset()
+        end
+
+        --// A point set in the UI (the miniboss's, the boss's room).
+        local function GoToPoint(Stage, Point)
+            FlyAndWait(Point, "THE " .. string.upper(Stage) .. " POINT", {
+                OnBlocked = function() end,
+                OnMoved = function() end,
+                OnArrived = function()
+                    DungeonPoints.MarkReached(Stage)
+                end,
+            })
         end
 
         --// Opens the end chest, then presses Replay on the summary.
@@ -643,7 +607,7 @@ return {
                 Zones = {}
             end
 
-            if EnterSafeZone(Zones, Position) or Dodge(Hazards, Position) then
+            if DungeonDodge.Handle(Zones, Hazards, Position, S.Majors, SetStatus) then
                 return
             end
 
@@ -673,9 +637,32 @@ return {
                 return UsePrompt(Loot, Position, "COLLECTING " .. Loot.Parent.Name)
             end
 
+            --// Past the pillar: the points set in the UI lead on (the
+            --// miniboss's room, then the boss door and the boss's room).
+            local PillarAlive = false
+
+            for _, Target in ipairs(Targets) do
+                PillarAlive = PillarAlive or Target.Kind == "pillar"
+            end
+
+            local Stage, Point = DungeonPoints.Next(S.SawPillar, PillarAlive, S.Majors)
+            local StageDoor = Stage == "boss" and DungeonTargets.FindDoor()
+
+            if StageDoor then
+                S.IdleSince = nil
+                return OpenDoor(StageDoor, Position)
+            end
+
+            if Stage then
+                S.IdleSince = nil
+                return GoToPoint(Stage, Point)
+            end
+
             local Room = nil
 
-            if Data.DungeonRooms then
+            --// With points set, rooms are only explored before the pillar:
+            --// after it they would lead back.
+            if Data.DungeonRooms and not (S.SawPillar and DungeonPoints.HasAny()) then
                 DungeonRooms.MarkNearby(Position)
                 Room = DungeonRooms.Next(Position)
             end

@@ -23,6 +23,7 @@ local SkillCore = LoadSpec("feature/SkillWatcher.lua").Core
 local TargetCore = LoadSpec("feature/DungeonTargets.lua").Core
 local RoomCore = LoadSpec("feature/DungeonRooms.lua").Core
 local EndCore = LoadSpec("feature/DungeonEnd.lua").Core
+local PointCore = LoadSpec("feature/DungeonPoints.lua").Core
 
 local Passed, Failed = 0, 0
 
@@ -761,6 +762,35 @@ Test("only Skull King's death ends the run", function()
     Equal(TargetCore.IsFinalBoss("Skull King", Cfg), true, "boss")
     Equal(TargetCore.IsFinalBoss("SkullKing_Boss", Cfg), true, "boss, other spelling")
     Equal(TargetCore.IsFinalBoss("Potion Witch", Cfg), false, "miniboss")
+end)
+
+Test("points: miniboss after the pillar, boss after the miniboss", function()
+    local function Flags(Overrides)
+        local F = { SawPillar = true, PillarAlive = false, MinibossSeen = false, MinibossAlive = false,
+            MiniReached = false, BossReached = false, HasMini = true, HasBoss = true }
+
+        for Key, Value in pairs(Overrides) do
+            F[Key] = Value
+        end
+
+        return F
+    end
+
+    Equal(PointCore.NextStage(Flags({ SawPillar = false })), nil, "before the pillar")
+    Equal(PointCore.NextStage(Flags({ PillarAlive = true })), nil, "pillar still standing")
+    Equal(PointCore.NextStage(Flags({})), "miniboss", "to the miniboss")
+    Equal(PointCore.NextStage(Flags({ MiniReached = true })), nil, "waiting for it")
+    Equal(PointCore.NextStage(Flags({ MiniReached = true, MinibossSeen = true, MinibossAlive = true })), nil, "fighting it")
+    Equal(PointCore.NextStage(Flags({ MiniReached = true, MinibossSeen = true })), "boss", "then the boss")
+    Equal(PointCore.NextStage(Flags({ MinibossSeen = true, BossReached = true })), nil, "boss point reached")
+    Equal(PointCore.NextStage(Flags({ HasMini = false })), nil, "no miniboss point")
+end)
+
+Test("saved points must be three numbers", function()
+    Truthy(PointCore.CleanPoint({ X = 1, Y = 2, Z = 3 }), "point")
+    Equal(PointCore.CleanPoint({ X = 1, Y = "2", Z = 3 }), nil, "text")
+    Equal(PointCore.CleanPoint({ X = 0 / 0, Y = 2, Z = 3 }), nil, "nan")
+    Equal(PointCore.CleanPoint(nil), nil, "nothing")
 end)
 
 Test("the boss door is the Stone Door", function()

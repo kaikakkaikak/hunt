@@ -62,6 +62,8 @@ return {
                 DungeonSafeZone = true,
                 --// AutoDungeon hits the boss and miniboss from behind.
                 DungeonBackstab = true,
+                --// Points set in the UI: Miniboss / Boss -> { X, Y, Z }.
+                DungeonPoints = {},
                 --// The UI page open: "hunt" or "dungeon".
                 Tab = "hunt",
             },
@@ -108,6 +110,20 @@ return {
                 if type(Saved[Key]) == "boolean" then
                     Data[Key] = Saved[Key]
                 end
+            end
+
+            if type(Saved.DungeonPoints) == "table" then
+                local Points = {}
+
+                for _, Name in ipairs({ "Miniboss", "Boss" }) do
+                    local Point = Saved.DungeonPoints[Name]
+
+                    if type(Point) == "table" and type(Point.X) == "number" and type(Point.Y) == "number" and type(Point.Z) == "number" then
+                        Points[Name] = { X = Point.X, Y = Point.Y, Z = Point.Z }
+                    end
+                end
+
+                Data.DungeonPoints = Points
             end
 
             if Saved.Tab == "hunt" or Saved.Tab == "dungeon" then
