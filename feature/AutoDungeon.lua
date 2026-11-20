@@ -8,7 +8,7 @@
 -- (DungeonRooms), since monsters only spawn once someone gets there, and
 -- waits there Config.DUNGEON_ROOM_WAIT for them.
 --
--- Attacking, while something is within Config.DUNGEON_ATTACK_RANGE: the
+-- Attacking (DungeonAttack), while something is within ATTACK_RANGE: the
 -- game's own auto (Config.DUNGEON_ATTACK_MODE "auto"), or skill
 -- DUNGEON_SKILL_KEY every DUNGEON_SKILL_INTERVAL and the buff
 -- DUNGEON_BUFF_KEY every DUNGEON_BUFF_INTERVAL ("keys").
@@ -28,7 +28,7 @@
 -- warning we stand in. With both off the fight goes on behind the boss.
 return {
     Name = "AutoDungeon",
-    Dependencies = {"Config", "Settings", "SafeMove", "SkillWatcher", "DungeonTargets", "DungeonRooms", "DungeonEnd", "KeyPress", "GameAuto", "AutoHunt"},
+    Dependencies = {"Config", "Settings", "SafeMove", "SkillWatcher", "DungeonTargets", "DungeonRooms", "DungeonEnd", "DungeonAttack", "GameAuto", "AutoHunt"},
 
     Start = function(Context)
         local Config = Context.Config
@@ -38,7 +38,7 @@ return {
         local DungeonTargets = Context.DungeonTargets
         local DungeonRooms = Context.DungeonRooms
         local DungeonEnd = Context.DungeonEnd
-        local KeyPress = Context.KeyPress
+        local DungeonAttack = Context.DungeonAttack
         local GameAuto = Context.GameAuto
         local AutoHunt = Context.AutoHunt
         local Lifetime = Context.Lifetime
@@ -66,8 +66,7 @@ return {
                 --// Model -> which side of it is tried (TurnEighths).
                 Side = setmetatable({}, { __mode = "k" }),
                 --// Prompt -> times it was used (boxes, the door).
-                PromptTries = setmetatable({}, { __mode = "k" }),
-                AutoWarned = false,
+                PromptTries = {},
                 --// Majors alive in the last scan (for SourceIsMajor).
                 Majors = {},
                 --// Mobs alive in the last scan.
@@ -184,47 +183,7 @@ return {
             return false
         end
 
-        --// The game's auto: pressed on once, the first time something is in
-        --// range after START DUNGEON or joining a server (the game always
-        --// has it off on entering). Never pressed again while the run goes
-        --// on: the button is a toggle, so a second press switches it off.
-        local function KeepAutoOn()
-            if GameAuto:IsEnabled() then
-                return
-            end
-
-            local Ok, Why = GameAuto:Enable()
-
-            if Ok then
-                print("[AutoDungeon] Game auto switched on")
-            elseif not S.AutoWarned then
-                S.AutoWarned = true
-                warn("[AutoDungeon] Could not switch the game's auto on: " .. tostring(Why))
-            end
-        end
-
-        task.spawn(function()
-            local SkillKey = Enum.KeyCode[Config.DUNGEON_SKILL_KEY]
-            local BuffKey = Enum.KeyCode[Config.DUNGEON_BUFF_KEY]
-            local LastBuff = -math.huge
-
-            while Lifetime.Alive do
-                if IsActive() and TargetInRange() then
-                    if Config.DUNGEON_ATTACK_MODE == "auto" then
-                        KeepAutoOn()
-                    else
-                        if os.clock() - LastBuff >= Config.DUNGEON_BUFF_INTERVAL then
-                            LastBuff = os.clock()
-                            KeyPress.Tap(BuffKey)
-                        end
-
-                        KeyPress.Tap(SkillKey)
-                    end
-                end
-
-                task.wait(Config.DUNGEON_SKILL_INTERVAL)
-            end
-        end)
+        DungeonAttack.Run(IsActive, TargetInRange)
 
         ------------------------------------------------------------------------
         --// Dodging
@@ -300,6 +259,12 @@ return {
         --// A side we could not reach is replaced by the next one round it
         --// (S.Side), so a spot inside a wall or over a gap is not retried.
         local UsePrompt
+
+        --// A prompt by its path: the game can remake a box's prompt, which
+        --// would start its tries over every time.
+        local function PromptKey(Prompt)
+            return Prompt:GetFullName()
+        end
         local SightedApproach
 
         local function ApproachPoint(Target, Position, Gap, SideOverride)
@@ -422,7 +387,7 @@ return {
                     SetStatus(Label .. ": UNREACHABLE (" .. tostring(Why) .. ")")
                     print(string.format("[AutoDungeon] %s unreachable: %s", Label, tostring(Why)))
                     --// Counts as a try, so an unreachable box is given up on.
-                    S.PromptTries[Prompt] = (S.PromptTries[Prompt] or 0) + 1
+                    S.PromptTries[PromptKey(Prompt)] = (S.PromptTries[PromptKey(Prompt)] or 0) + 1
                     task.wait(IDLE_WAIT)
                 end
 
@@ -432,8 +397,8 @@ return {
                 end
             end
 
-            local Try = (S.PromptTries[Prompt] or 0) + 1
-            S.PromptTries[Prompt] = Try
+            local Try = (S.PromptTries[PromptKey(Prompt)] or 0) + 1
+            S.PromptTries[PromptKey(Prompt)] = Try
             SetStatus(string.format("%s (try %d)", Label, Try))
             print(string.format("[AutoDungeon] %s: %s, try %d", Label, Prompt:GetFullName(), Try))
             DungeonTargets.UsePrompt(Prompt, Try)
@@ -546,7 +511,7 @@ return {
             S.SawMajor, S.SawFinal, S.SawPillar, S.Ending, S.IdleSince = false, false, false, nil, nil
             SafeMove.SetFlyThrough(false)
             S.Target = nil
-            S.PromptTries = setmetatable({}, { __mode = "k" })
+            S.PromptTries = {}
             S.RunRoot = DungeonTargets.GetRoot()
             DungeonRooms.Reset()
         end
@@ -559,13 +524,13 @@ return {
                 --// The nearest box once the boss is down is the end chest;
                 --// it is kept, so other rooms' boxes are not flown to.
                 Ending.Chest = Ending.Chest or DungeonTargets.FindLoot(Position, function(Prompt)
-                    return (S.PromptTries[Prompt] or 0) < Config.DUNGEON_LOOT_TRIES
+                    return (S.PromptTries[PromptKey(Prompt)] or 0) < Config.DUNGEON_LOOT_TRIES
                 end, Config.DUNGEON_END_CHEST_RADIUS)
 
                 local Chest = Ending.Chest
 
                 if Chest then
-                    local Tries = S.PromptTries[Chest] or 0
+                    local Tries = S.PromptTries[PromptKey(Chest)] or 0
 
                     --// Opened (its prompt gone or switched off), or given up.
                     if not Chest.Parent or not Chest.Enabled or Tries >= Config.DUNGEON_LOOT_TRIES then
@@ -691,7 +656,7 @@ return {
             --// Only boxes close by (the room we are in): one across the map
             --// would pull us past rooms not done yet.
             local Loot = Data.DungeonLoot and DungeonTargets.FindLoot(Position, function(Prompt)
-                return (S.PromptTries[Prompt] or 0) < Config.DUNGEON_LOOT_TRIES
+                return (S.PromptTries[PromptKey(Prompt)] or 0) < Config.DUNGEON_LOOT_TRIES
             end, Config.DUNGEON_LOOT_RADIUS)
 
             if Loot then
@@ -754,7 +719,7 @@ return {
                 --// Off on entering: believed, not pressed, so stopping the
                 --// hunt below cannot toggle it on by mistake.
                 GameAuto:AssumeOff()
-                S.AutoWarned = false
+                DungeonAttack.Reset()
                 AutoHunt:SetRunning(false)
                 ResetRun()
             end

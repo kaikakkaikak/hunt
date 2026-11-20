@@ -627,15 +627,15 @@ Test("the safe spot skips unusable points and stays near the boss", function()
     end), nil, "none usable")
 end)
 
-Test("targets: boss or miniboss, then pillar, then monsters", function()
+Test("targets: pillar, then boss or miniboss, then monsters", function()
     local At = { X = 0, Y = 0, Z = 0 }
     local Close = { Kind = "mob", X = 1, Y = 0, Z = 0 }
     local Far = { Kind = "mob", X = 200, Y = 0, Z = 0 }
     local Pillar = { Kind = "pillar", X = 300, Y = 0, Z = 0 }
     local Boss = { Kind = "major", X = 250, Y = 0, Z = 0 }
 
-    Equal(TargetCore.Pick({ Far, Close, Pillar, Boss }, At), Boss, "boss first")
-    Equal(TargetCore.Pick({ Far, Close, Pillar }, At), Pillar, "pillar before monsters")
+    Equal(TargetCore.Pick({ Far, Close, Pillar, Boss }, At), Pillar, "pillar first")
+    Equal(TargetCore.Pick({ Far, Close, Boss }, At), Boss, "boss before monsters")
     Equal(TargetCore.Pick({ Far, Close }, At), Close, "nearest monster")
     Equal(TargetCore.Pick({}, At), nil, "nothing")
 end)
@@ -649,17 +649,17 @@ Test("the boss is not left for a monster close by", function()
     Equal(TargetCore.Pick({ Witch, Ghost }, At, "G", Cfg), Witch, "back to the boss")
 end)
 
-Test("monsters close by come before the pillar, even while hitting it", function()
+Test("the pillar comes before monsters, close by or not", function()
     local At = { X = 0, Y = 0, Z = 0 }
     local Close = { Id = "M", Kind = "mob", X = 10, Y = 0, Z = 0, Visible = true }
     local Walled = { Id = "B", Kind = "mob", X = 8, Y = 0, Z = 0, Visible = false }
     local Far = { Id = "F", Kind = "mob", X = 200, Y = 0, Z = 0 }
     local Pillar = { Id = "P", Kind = "pillar", X = 5, Y = 0, Z = 0 }
 
-    Equal(TargetCore.Pick({ Pillar, Close, Far }, At, nil, Cfg), Close, "close mob first")
-    Equal(TargetCore.Pick({ Pillar, Close, Far }, At, "P", Cfg), Close, "even off the pillar")
-    Equal(TargetCore.Pick({ Pillar, Far }, At, "M", Cfg), Pillar, "then back to the pillar")
-    Equal(TargetCore.Pick({ Pillar, Walled }, At, "P", Cfg), Pillar, "not one behind a wall")
+    Equal(TargetCore.Pick({ Pillar, Close, Far }, At, nil, Cfg), Pillar, "pillar first")
+    Equal(TargetCore.Pick({ Pillar, Close, Far }, At, "M", Cfg), Pillar, "off a monster for the pillar")
+    Equal(TargetCore.Pick({ Close, Far }, At, nil, Cfg), Close, "close one first")
+    Equal(TargetCore.Pick({ Walled, Far }, At, "F", Cfg), Far, "one behind a wall is not close")
 end)
 
 Test("the target being fought is kept when another looks nearer", function()

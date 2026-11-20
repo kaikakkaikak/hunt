@@ -11,12 +11,11 @@
 -- is a "Sheet Ghost"). A monster is alive while its Humanoid is, or its
 -- Health / HP attribute is above 0.
 --
--- Which one to fight next (Core.Pick): the miniboss or boss (never left
--- for a monster while alive), then a monster we can see within
--- Config.DUNGEON_ENGAGE_RADIUS (the game's auto goes for those, and does
--- not hit the pillar while they are about; one behind a wall is not "near"),
--- then the ritual pillar, then the other monsters; the nearest of the same
--- kind first.
+-- Which one to fight next (Core.Pick): the ritual pillar first (the boss's
+-- fight has pillars too), then the miniboss or boss (never left for a
+-- monster while alive), then a monster we can see within
+-- Config.DUNGEON_ENGAGE_RADIUS (one behind a wall is not "near"), then the
+-- other monsters; the nearest of the same kind first.
 -- Monsters passed on the way are still hit (AutoDungeon attacks anything
 -- in range). Nothing left to fight: the boxes in the rooms are collected
 -- (FindLoot), then the boss door's prompt is held open.
@@ -86,9 +85,9 @@ function Core.IsDoorText(Texts, Cfg)
     return false
 end
 
-local PRIORITY = { major = 1, pillar = 3, mob = 4 }
---// A monster close by and in sight: before the pillar, after a boss.
-local NEAR_MOB = 2
+local PRIORITY = { pillar = 1, major = 2, mob = 4 }
+--// A monster close by and in sight: after the pillar and a boss.
+local NEAR_MOB = 3
 
 --// A prompt worth using to collect: none of DUNGEON_LOOT_SKIP_KEYWORDS (a
 --// way out of the dungeon), and one of DUNGEON_LOOT_KEYWORDS (any, when

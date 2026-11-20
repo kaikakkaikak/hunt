@@ -4,7 +4,7 @@
 
 --// Bump on every push: shown on load and in the window title, so an old
 --// copy (cache, local files) is easy to spot.
-local VERSION = "0.17.1"
+local VERSION = "0.17.2"
 local TITLE = "AUTO HUNT v" .. VERSION
 
 --// Where features are read from: GitHub by default. Set
@@ -44,6 +44,7 @@ local MODULES = {
     "feature/DungeonTargets.lua",
     "feature/DungeonRooms.lua",
     "feature/DungeonEnd.lua",
+    "feature/DungeonAttack.lua",
     "feature/AutoDungeon.lua",
     "feature/Widgets.lua",
     "feature/ConsolePanel.lua",
