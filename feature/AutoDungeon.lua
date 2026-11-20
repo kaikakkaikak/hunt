@@ -1,7 +1,9 @@
 -- AutoDungeon clears the Halloween dungeon by flying (SafeMove) and using
 -- skills, without the game's own auto:
 --   rooms' monsters -> ritual pillar -> miniboss -> boss door -> boss,
--- hitting every monster on the way (DungeonTargets.Pick decides). With
+-- in the order DungeonTargets.Pick gives (pillar, boss or miniboss, then
+-- monsters), hitting any monster in range on the way. Bosses and minibosses
+-- are hit from behind. With
 -- nothing in sight it flies into the next room not visited yet
 -- (DungeonRooms), since monsters only spawn once someone gets there, and
 -- waits there Config.DUNGEON_ROOM_WAIT for them.
@@ -127,16 +129,36 @@ return {
         --// Attacking
         ------------------------------------------------------------------------
 
-        local function TargetInRange()
-            local Target = S.Target
-            local Position = SafeMove.GetPosition()
-
-            if not Target or not Position or not Target.Model.Parent or not DungeonTargets.IsAlive(Target.Model) then
+        local function InRange(Entry, Position)
+            if not Entry.Model.Parent or not DungeonTargets.IsAlive(Entry.Model) then
                 return false
             end
 
-            local Live = DungeonTargets.GetPosition(Target.Model) or Target.Position
-            return Distance(Position, Live) - Target.Radius <= Config.DUNGEON_ATTACK_RANGE
+            local Live = DungeonTargets.GetPosition(Entry.Model) or Entry.Position
+            return Distance(Position, Live) - Entry.Radius <= Config.DUNGEON_ATTACK_RANGE
+        end
+
+        --// The target, or any boss or monster we pass by, is in reach.
+        local function TargetInRange()
+            local Position = SafeMove.GetPosition()
+
+            if not Position then
+                return false
+            end
+
+            if S.Target and InRange(S.Target, Position) then
+                return true
+            end
+
+            for _, List in ipairs({ S.Majors, S.Mobs }) do
+                for _, Entry in ipairs(List) do
+                    if InRange(Entry, Position) then
+                        return true
+                    end
+                end
+            end
+
+            return false
         end
 
         task.spawn(function()
@@ -227,12 +249,14 @@ return {
         --// Fighting
         ------------------------------------------------------------------------
 
-        --// Next to the target, on our side of it, Gap (default
-        --// ATTACK_DISTANCE) from its edge.
+        --// Next to the target, Gap (default ATTACK_DISTANCE) from its edge:
+        --// behind a boss or miniboss, on our side of anything else.
         local function ApproachPoint(Target, Position, Gap)
             local Away = Vector3.new(Position.X - Target.Position.X, 0, Position.Z - Target.Position.Z)
 
-            if Away.Magnitude < 0.1 then
+            if Target.Kind == "major" and Target.Look then
+                Away = -Target.Look
+            elseif Away.Magnitude < 0.1 then
                 Away = Vector3.new(1, 0, 0)
             end
 
@@ -422,13 +446,14 @@ return {
                 return
             end
 
-            local Picked = TargetCore.Pick(Targets, Flat(Position), Config)
+            local Picked = TargetCore.Pick(Targets, Flat(Position))
 
             if Picked then
                 S.IdleSince, S.DoorLogged = nil, false
                 return Fight(Picked.Entry, Position, Hazards)
             end
 
+            DungeonRooms.MarkNearby(Position)
             local Room = DungeonRooms.Next(Position)
 
             if Room then

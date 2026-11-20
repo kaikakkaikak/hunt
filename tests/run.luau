@@ -504,6 +504,7 @@ end
 
 Test("flying speed is WalkSpeed times the multiplier", function()
     Near(MoveCore.TweenSeconds(36, 16, 1.8), 36 / 28.8, "seconds")
+    Equal(Cfg.DUNGEON_SPEED_MULTIPLIER, 2.7, "half again faster than 1.8")
     Near(MoveCore.TweenSeconds(10, 0, 1.8), 10, "never below 1 stud/s")
 end)
 
@@ -511,6 +512,15 @@ Test("a long leg is cut to the step length", function()
     Equal(MoveCore.StepFraction(10, 14), 1, "short leg")
     Near(MoveCore.StepFraction(28, 14), 0.5, "long leg")
     Equal(MoveCore.StepFraction(0, 14), 1, "no leg")
+end)
+
+Test("a path's waypoints are passed in order, never gone back to", function()
+    local Points = { { X = 0, Z = 0 }, { X = 10, Z = 0 }, { X = 10, Z = 10 } }
+
+    Equal(MoveCore.AdvanceIndex(Points, 1, 0.5, 0, 2), 2, "first passed")
+    Equal(MoveCore.AdvanceIndex(Points, 2, 0, 0, 2), 2, "not reached yet")
+    Equal(MoveCore.AdvanceIndex(Points, 3, 0, 0, 2), 3, "never back")
+    Equal(MoveCore.AdvanceIndex(Points, 3, 10, 9.5, 2), 4, "all passed")
 end)
 
 Test("stand height for R15 and R6", function()
@@ -614,26 +624,25 @@ Test("the safe spot skips unusable points and stays near the boss", function()
     end), nil, "none usable")
 end)
 
-Test("targets: monsters on the way, then rooms, pillar, bosses", function()
+Test("targets: pillar, then boss or miniboss, then monsters", function()
     local At = { X = 0, Y = 0, Z = 0 }
-    local Close = { Kind = "mob", X = 10, Y = 0, Z = 0 }
+    local Close = { Kind = "mob", X = 1, Y = 0, Z = 0 }
     local Far = { Kind = "mob", X = 200, Y = 0, Z = 0 }
-    local Pillar = { Kind = "pillar", X = 5, Y = 0, Z = 0 }
-    local Boss = { Kind = "major", X = 2, Y = 0, Z = 0 }
+    local Pillar = { Kind = "pillar", X = 300, Y = 0, Z = 0 }
+    local Boss = { Kind = "major", X = 250, Y = 0, Z = 0 }
 
-    Equal(TargetCore.Pick({ Boss, Pillar, Far, Close }, At, Cfg), Close, "near mob first")
-    Equal(TargetCore.Pick({ Boss, Pillar, Far }, At, Cfg), Far, "rooms before the pillar")
-    Equal(TargetCore.Pick({ Boss, Pillar }, At, Cfg), Pillar, "pillar before bosses")
-    Equal(TargetCore.Pick({ Boss }, At, Cfg), Boss, "boss")
-    Equal(TargetCore.Pick({}, At, Cfg), nil, "nothing")
+    Equal(TargetCore.Pick({ Boss, Far, Close, Pillar }, At), Pillar, "pillar first")
+    Equal(TargetCore.Pick({ Far, Close, Boss }, At), Boss, "boss before monsters")
+    Equal(TargetCore.Pick({ Far, Close }, At), Close, "nearest monster")
+    Equal(TargetCore.Pick({}, At), nil, "nothing")
 end)
 
 Test("an unreachable target is left for later", function()
     local At = { X = 0, Y = 0, Z = 0 }
-    local Stuck = { Kind = "mob", X = 5, Y = 0, Z = 0, Skipped = true }
+    local Stuck = { Kind = "pillar", X = 5, Y = 0, Z = 0, Skipped = true }
     local Boss = { Kind = "major", X = 50, Y = 0, Z = 0 }
 
-    Equal(TargetCore.Pick({ Stuck, Boss }, At, Cfg), Boss, "skipped")
+    Equal(TargetCore.Pick({ Stuck, Boss }, At), Boss, "skipped")
 end)
 
 Test("target kinds by the dungeon's names", function()
@@ -658,6 +667,12 @@ Test("rooms by keyword, or only the listed names once given", function()
     local Named = With({ DUNGEON_ROOM_NAMES = { "Area 1" } })
     Equal(RoomCore.IsRoomName("Area1", Named), true, "listed")
     Equal(RoomCore.IsRoomName("Room3", Named), false, "keywords unused")
+end)
+
+Test("a room is the same room by name and place, not by instance", function()
+    Equal(RoomCore.RoomKey("Room1", 100.4, -20), RoomCore.RoomKey("Room1", 101, -19.2), "same place")
+    Truthy(RoomCore.RoomKey("Room1", 100, 0) ~= RoomCore.RoomKey("Room2", 100, 0), "other name")
+    Truthy(RoomCore.RoomKey("Room1", 100, 0) ~= RoomCore.RoomKey("Room1", 140, 0), "other place")
 end)
 
 Test("the next room is the nearest one not visited or skipped", function()

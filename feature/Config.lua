@@ -178,17 +178,16 @@ return {
             --// Flying: WalkSpeed times this, this far above standing height,
             --// in legs of at most DUNGEON_STEP_STUDS. The wall check sweeps a
             --// box this size (X, Y, Z studs).
-            DUNGEON_SPEED_MULTIPLIER = 1.8,
+            DUNGEON_SPEED_MULTIPLIER = 2.7,
             DUNGEON_HOVER_OFFSET = 1.5,
             DUNGEON_STEP_STUDS = 14,
             DUNGEON_SWEEP_SIZE = { 2.5, 4, 2.5 },
 
             --// Fighting: hover this far from the target; skills go out while
-            --// it is within ATTACK_RANGE. Monsters within ENGAGE_RADIUS of us
+            --// it (or any monster we pass) is within ATTACK_RANGE.
             --// are fought before anything else (the ones on the way).
             DUNGEON_ATTACK_DISTANCE = 6,
             DUNGEON_ATTACK_RANGE = 14,
-            DUNGEON_ENGAGE_RADIUS = 30,
             --// Enum.KeyCode names: skill 1 every 0.2s, the buff (skill 4)
             --// every BUFF_INTERVAL (pressing it on cooldown does nothing).
             DUNGEON_SKILL_KEY = "One",

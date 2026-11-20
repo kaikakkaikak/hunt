@@ -11,12 +11,10 @@
 -- is a "Sheet Ghost"). A monster is alive while its Humanoid is, or its
 -- Health / HP attribute is above 0.
 --
--- Which one to fight next (Core.Pick), matching the dungeon's order:
---   1. a mob within Config.DUNGEON_ENGAGE_RADIUS: the ones on the way;
---   2. the nearest mob anywhere: the five rooms;
---   3. the nearest ritual pillar;
---   4. the nearest miniboss or boss.
--- Nothing left to fight: the boss door's prompt is held open.
+-- Which one to fight next (Core.Pick): the ritual pillar, then the
+-- miniboss or boss, then monsters; the nearest of the same kind first.
+-- Monsters passed on the way are still hit (AutoDungeon attacks anything
+-- in range). Nothing left to fight: the boss door's prompt is held open.
 local Core = {}
 
 --// "Bone hound", "Bone_Hound" and "BoneHound" are the same name.
@@ -78,22 +76,18 @@ function Core.IsDoorText(Texts, Cfg)
     return false
 end
 
-local PRIORITY = { pillar = 3, major = 4 }
+local PRIORITY = { pillar = 1, major = 2, mob = 3 }
 
 --// The target to fight from Position ({ X, Y, Z }), or nil. Targets =
 --// { Kind, X, Y, Z, Skipped }: a skipped one (could not be reached) is
 --// left for later.
-function Core.Pick(Targets, Position, Cfg)
+function Core.Pick(Targets, Position)
     local Best, BestRank, BestDistance = nil, math.huge, math.huge
 
     for _, Target in ipairs(Targets) do
         if not Target.Skipped then
             local Distance = math.sqrt((Target.X - Position.X) ^ 2 + (Target.Y - Position.Y) ^ 2 + (Target.Z - Position.Z) ^ 2)
-            local Rank = PRIORITY[Target.Kind]
-
-            if not Rank then
-                Rank = Distance <= Cfg.DUNGEON_ENGAGE_RADIUS and 1 or 2
-            end
+            local Rank = PRIORITY[Target.Kind] or math.huge
 
             if Rank < BestRank or (Rank == BestRank and Distance < BestDistance) then
                 Best, BestRank, BestDistance = Target, Rank, Distance
@@ -142,6 +136,23 @@ return {
         end
 
         DungeonTargets.GetPosition = GetPosition
+
+        --// Where a target faces (level), or nil.
+        local function GetLook(Object)
+            local Frame
+
+            if Object:IsA("Model") then
+                local Root = Object:FindFirstChild("HumanoidRootPart") or Object.PrimaryPart
+                Frame = Root and Root.CFrame or Object:GetPivot()
+            elseif Object:IsA("BasePart") then
+                Frame = Object.CFrame
+            end
+
+            local Look = Frame and Vector3.new(Frame.LookVector.X, 0, Frame.LookVector.Z)
+            return Look and Look.Magnitude > 0.1 and Look.Unit or nil
+        end
+
+        DungeonTargets.GetLook = GetLook
 
         --// Alive: a living Humanoid, else a positive Health / HP attribute,
         --// else simply still there.
@@ -196,7 +207,10 @@ return {
                 local Position = GetPosition(Object)
 
                 if Position then
-                    table.insert(Found, { Model = Object, Kind = Kind, Name = Object.Name, Position = Position, Radius = GetRadius(Object) })
+                    table.insert(Found, {
+                        Model = Object, Kind = Kind, Name = Object.Name,
+                        Position = Position, Radius = GetRadius(Object), Look = GetLook(Object),
+                    })
                 end
             end
 

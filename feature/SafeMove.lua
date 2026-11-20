@@ -29,6 +29,23 @@ function Core.StepFraction(Length, MaxStep)
     return MaxStep / Length
 end
 
+--// The path waypoint to aim at: past every one already reached (within
+--// Reached, X and Z only) and never back to an earlier one. Points =
+--// { X, Z }; returns an index, #Points + 1 once all are passed.
+function Core.AdvanceIndex(Points, Index, X, Z, Reached)
+    while Points[Index] do
+        local DX, DZ = Points[Index].X - X, Points[Index].Z - Z
+
+        if DX * DX + DZ * DZ > Reached * Reached then
+            break
+        end
+
+        Index += 1
+    end
+
+    return Index
+end
+
 --// The root's height above the floor when standing: R15 from HipHeight,
 --// R6 (HipHeight 0) from its fixed leg length.
 function Core.StandHeight(HipHeight, RootHeight)
@@ -59,6 +76,12 @@ return {
         --// A path's later waypoints are tried first, up to this many ahead,
         --// so a clear shortcut skips the ones in between.
         local PATH_LOOKAHEAD = 6
+        --// A waypoint counts as passed this close (X and Z only).
+        local WAYPOINT_REACHED = 2
+        --// A path is kept while its destination moved less than this and
+        --// it is younger than PATH_MAX_AGE; else it is found again.
+        local REPATH_DISTANCE = 6
+        local PATH_MAX_AGE = 6
         local SWEEP_SIZE = Vector3.new(table.unpack(Config.DUNGEON_SWEEP_SIZE))
 
         local SafeMove = {
@@ -73,6 +96,8 @@ return {
                 Connection = nil,
                 --// Models the sweeps and floor checks ignore (enemies).
                 Ignore = {},
+                --// The path being followed: { Target, Points, Index, Since }.
+                Path = nil,
             },
         }
 
@@ -235,6 +260,7 @@ return {
             SafeMove.Cancel()
             S.Engaged = false
             S.Facing = nil
+            S.Path = nil
 
             if S.Connection then
                 S.Connection:Disconnect()
@@ -291,30 +317,72 @@ return {
             return Points
         end
 
-        --// The next point to fly to on the way to Target (a hover point):
-        --// Target itself when the line is clear, else the furthest clear
-        --// waypoint of a path. Nil and why when there is none.
-        local function NextPoint(From, Target)
-            if SafeMove.IsClear(From, Target) then
-                return Target
-            end
-
+        local function NewPath(From, Target)
             --// Paths are found between floor points, not hover points.
             local _, Humanoid, Root = GetCharacter()
             local Down = Vector3.new(0, Humanoid and SafeMove.HoverHeight(Humanoid, Root) or 0, 0)
             local Points = GetPathPoints(From - Down, Target - Down)
 
             if not Points or #Points == 0 then
-                return nil, "no path"
+                return nil
             end
 
-            for Index = math.min(#Points, PATH_LOOKAHEAD), 1, -1 do
-                if SafeMove.IsClear(From, Points[Index]) then
-                    return Points[Index]
+            return { Target = Target, Points = Points, Index = 1, Since = os.clock() }
+        end
+
+        local function IsPathFresh(Path, Target)
+            return Path ~= nil
+                and (Path.Target - Target).Magnitude < REPATH_DISTANCE
+                and os.clock() - Path.Since < PATH_MAX_AGE
+        end
+
+        --// The furthest clear waypoint ahead on Path, moving its index
+        --// there (never back), or nil when none is clear.
+        local function AimOnPath(Path, From)
+            Path.Index = Core.AdvanceIndex(Path.Points, Path.Index, From.X, From.Z, WAYPOINT_REACHED)
+
+            for Index = math.min(#Path.Points, Path.Index + PATH_LOOKAHEAD - 1), Path.Index, -1 do
+                if SafeMove.IsClear(From, Path.Points[Index]) then
+                    Path.Index = Index
+                    return Path.Points[Index]
                 end
             end
 
-            return nil, "path blocked"
+            return nil
+        end
+
+        --// The next point to fly to on the way to Target (a hover point):
+        --// Target itself when the line is clear, else the next waypoint of
+        --// the path being followed. The path is kept between legs, so a
+        --// corner is flown round to its end instead of being found again
+        --// (and differently) each leg. Nil and why when there is none.
+        local function NextPoint(From, Target)
+            if SafeMove.IsClear(From, Target) then
+                S.Path = nil
+                return Target
+            end
+
+            if not IsPathFresh(S.Path, Target) then
+                S.Path = NewPath(From, Target)
+            end
+
+            if not S.Path then
+                return nil, "no path"
+            end
+
+            local Point = S.Path.Index <= #S.Path.Points and AimOnPath(S.Path, From)
+
+            --// The kept path ran out or got blocked: find a new one once.
+            if not Point then
+                S.Path = NewPath(From, Target)
+                Point = S.Path and AimOnPath(S.Path, From)
+            end
+
+            if not Point then
+                return nil, S.Path and "path blocked" or "no path"
+            end
+
+            return Point
         end
 
         --// One leg (at most Config.DUNGEON_STEP_STUDS) toward Destination.

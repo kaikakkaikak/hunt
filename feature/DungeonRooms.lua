@@ -7,7 +7,11 @@
 -- "MobSpawn", "WaveTrigger"). Only the outermost match counts, so a room's
 -- own spawn points are not visited one by one. Monsters are never rooms.
 --
--- A room is done once reached. One that cannot be reached is left for
+-- A room is done once we come within Config.DUNGEON_ROOM_ARRIVE of it (X and
+-- Z only), flying there or passing by while fighting, and never visited
+-- again. Rooms are remembered by name and place, so one that streams out
+-- and back in (a new instance) still counts as done. One that cannot be
+-- reached is left for
 -- Config.DUNGEON_UNREACHABLE_SECONDS and tried again (the boss room opens
 -- later).
 local Core = {}
@@ -34,6 +38,11 @@ function Core.IsRoomName(Name, Cfg)
     end
 
     return ContainsAny(Cfg.DUNGEON_ROOM_KEYWORDS, Normal)
+end
+
+--// The same room whatever instance holds it: its name and place (4 studs).
+function Core.RoomKey(Name, X, Z)
+    return string.format("%s@%d,%d", Name, math.floor(X / 4 + 0.5), math.floor(Z / 4 + 0.5))
 end
 
 --// The nearest room not done and not skipped, from Position ({ X, Y, Z }).
@@ -75,9 +84,10 @@ return {
                 Rooms = {},
                 ReadAt = -math.huge,
                 Root = nil,
-                Done = setmetatable({}, { __mode = "k" }),
-                SkipUntil = setmetatable({}, { __mode = "k" }),
-                Blocked = setmetatable({}, { __mode = "k" }),
+                --// RoomKey -> true / os.clock() / blocked count.
+                Done = {},
+                SkipUntil = {},
+                Blocked = {},
             },
         }
 
@@ -143,7 +153,10 @@ return {
                     local Center = GetCenter(Object)
 
                     if Center then
-                        table.insert(Rooms, { Instance = Object, Name = Object.Name, Position = Center })
+                        table.insert(Rooms, {
+                            Instance = Object, Name = Object.Name, Position = Center,
+                            Key = Core.RoomKey(Object.Name, Center.X, Center.Z),
+                        })
                     end
 
                     if #Rooms >= Config.DUNGEON_ROOM_MAX then
@@ -188,8 +201,8 @@ return {
                 if Room.Instance.Parent then
                     table.insert(Candidates, {
                         X = Room.Position.X, Y = Room.Position.Y, Z = Room.Position.Z,
-                        Done = S.Done[Room.Instance] == true,
-                        Skipped = (S.SkipUntil[Room.Instance] or 0) > Now,
+                        Done = S.Done[Room.Key] == true,
+                        Skipped = (S.SkipUntil[Room.Key] or 0) > Now,
                         Room = Room,
                     })
                 end
@@ -200,32 +213,45 @@ return {
         end
 
         function DungeonRooms.MarkDone(Room)
-            S.Done[Room.Instance] = true
-            S.Blocked[Room.Instance] = nil
+            if not S.Done[Room.Key] then
+                print("[AutoDungeon] Room done: " .. Room.Name)
+            end
+
+            S.Done[Room.Key] = true
+            S.Blocked[Room.Key] = nil
+        end
+
+        --// Every room we are at now counts as done.
+        function DungeonRooms.MarkNearby(Position)
+            for _, Room in ipairs(S.Rooms) do
+                local DX, DZ = Room.Position.X - Position.X, Room.Position.Z - Position.Z
+
+                if DX * DX + DZ * DZ <= Config.DUNGEON_ROOM_ARRIVE ^ 2 then
+                    DungeonRooms.MarkDone(Room)
+                end
+            end
         end
 
         --// Counts a blocked leg; after DUNGEON_BLOCKED_TRIES in a row the
         --// room is left for a while.
         function DungeonRooms.NoteBlocked(Room, Why)
-            local Count = (S.Blocked[Room.Instance] or 0) + 1
-            S.Blocked[Room.Instance] = Count
+            local Count = (S.Blocked[Room.Key] or 0) + 1
+            S.Blocked[Room.Key] = Count
 
             if Count >= Config.DUNGEON_BLOCKED_TRIES then
-                S.Blocked[Room.Instance] = nil
-                S.SkipUntil[Room.Instance] = os.clock() + Config.DUNGEON_UNREACHABLE_SECONDS
+                S.Blocked[Room.Key] = nil
+                S.SkipUntil[Room.Key] = os.clock() + Config.DUNGEON_UNREACHABLE_SECONDS
                 print(string.format("[AutoDungeon] Cannot reach room %s (%s): skipped for %ds", Room.Name, tostring(Why), Config.DUNGEON_UNREACHABLE_SECONDS))
             end
         end
 
         function DungeonRooms.NoteMoved(Room)
-            S.Blocked[Room.Instance] = nil
+            S.Blocked[Room.Key] = nil
         end
 
         --// A new run explores every room again.
         function DungeonRooms.Reset()
-            S.Done = setmetatable({}, { __mode = "k" })
-            S.SkipUntil = setmetatable({}, { __mode = "k" })
-            S.Blocked = setmetatable({}, { __mode = "k" })
+            S.Done, S.SkipUntil, S.Blocked = {}, {}, {}
             S.ReadAt = -math.huge
         end
 
