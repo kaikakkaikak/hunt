@@ -173,6 +173,8 @@ return {
             DUNGEON_ROOM_ARRIVE = 8,
             DUNGEON_ROOM_WAIT = 3,
             DUNGEON_ROOM_MAX = 40,
+            --// A room skipped this many times is dropped for good.
+            DUNGEON_ROOM_GIVE_UP_SKIPS = 2,
             DUNGEON_DOOR_KEY = "E",
 
             --// Flying: WalkSpeed times this, this far above standing height,
@@ -196,7 +198,10 @@ return {
             DUNGEON_BUFF_INTERVAL = 1,
             --// A target not reached after this many blocked legs is left
             --// for this long.
-            DUNGEON_BLOCKED_TRIES = 3,
+            --// (each blocked try aims at another side of the target).
+            DUNGEON_BLOCKED_TRIES = 8,
+            --// A target's size counts up to this (studs from its centre).
+            DUNGEON_MAX_TARGET_RADIUS = 10,
             DUNGEON_UNREACHABLE_SECONDS = 15,
             --// After a boss was seen, nothing left for this long = cleared.
             DUNGEON_DONE_SECONDS = 10,

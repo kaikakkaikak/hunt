@@ -649,6 +649,19 @@ Test("the target being fought is kept when another looks nearer", function()
     Equal(TargetCore.Pick({ Behind }, At, "A"), Behind, "gone: next one")
 end)
 
+Test("blocked tries go round the target an eighth at a time", function()
+    local X, Z = TargetCore.TurnEighths(1, 0, 0)
+    Near(X, 1, "try 0 x")
+    Near(Z, 0, "try 0 z")
+
+    X, Z = TargetCore.TurnEighths(1, 0, 2)
+    Near(X, 0, "quarter x")
+    Near(Z, 1, "quarter z")
+
+    X, Z = TargetCore.TurnEighths(1, 0, 8)
+    Near(X, 1, "full turn x")
+end)
+
 Test("an unreachable target is left for later", function()
     local At = { X = 0, Y = 0, Z = 0 }
     local Stuck = { Kind = "pillar", X = 5, Y = 0, Z = 0, Skipped = true }

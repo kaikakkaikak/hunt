@@ -11,9 +11,9 @@
 -- Z only), flying there or passing by while fighting, and never visited
 -- again. Rooms are remembered by name and place, so one that streams out
 -- and back in (a new instance) still counts as done. One that cannot be
--- reached is left for
--- Config.DUNGEON_UNREACHABLE_SECONDS and tried again (the boss room opens
--- later).
+-- reached is left for Config.DUNGEON_UNREACHABLE_SECONDS and tried again
+-- (the boss room opens later), up to Config.DUNGEON_ROOM_GIVE_UP_SKIPS
+-- times; then it is dropped.
 local Core = {}
 
 local function Normalize(Name)
@@ -99,6 +99,8 @@ return {
                 Blocked = {},
                 --// The room being flown to.
                 CurrentKey = nil,
+                --// RoomKey -> times it was skipped.
+                Skips = {},
             },
         }
 
@@ -256,11 +258,36 @@ return {
             local Count = (S.Blocked[Room.Key] or 0) + 1
             S.Blocked[Room.Key] = Count
 
-            if Count >= Config.DUNGEON_BLOCKED_TRIES then
-                S.Blocked[Room.Key] = nil
-                S.SkipUntil[Room.Key] = os.clock() + Config.DUNGEON_UNREACHABLE_SECONDS
-                print(string.format("[AutoDungeon] Cannot reach room %s (%s): skipped for %ds", Room.Name, tostring(Why), Config.DUNGEON_UNREACHABLE_SECONDS))
+            if Count < Config.DUNGEON_BLOCKED_TRIES then
+                return
             end
+
+            S.Blocked[Room.Key] = nil
+            S.Skips[Room.Key] = (S.Skips[Room.Key] or 0) + 1
+
+            --// Not reached after this many tries: dropped for good, so
+            --// the bot does not keep coming back to it.
+            if S.Skips[Room.Key] >= Config.DUNGEON_ROOM_GIVE_UP_SKIPS then
+                S.Done[Room.Key] = true
+                print(string.format("[AutoDungeon] Giving up on room %s (%s)", Room.Name, tostring(Why)))
+                return
+            end
+
+            S.SkipUntil[Room.Key] = os.clock() + Config.DUNGEON_UNREACHABLE_SECONDS
+            print(string.format("[AutoDungeon] Cannot reach room %s (%s): skipped for %ds", Room.Name, tostring(Why), Config.DUNGEON_UNREACHABLE_SECONDS))
+        end
+
+        --// Where to fly for Room: its centre, or after blocked tries a spot
+        --// round it, still close enough to count as there.
+        function DungeonRooms.AimPoint(Room)
+            local Tries = S.Blocked[Room.Key] or 0
+
+            if Tries == 0 then
+                return Room.Position
+            end
+
+            local X, Z = DungeonTargets.Core.TurnEighths(1, 0, Tries)
+            return Room.Position + Vector3.new(X, 0, Z) * Config.DUNGEON_ROOM_ARRIVE * 0.7
         end
 
         function DungeonRooms.NoteMoved(Room)
@@ -269,7 +296,7 @@ return {
 
         --// A new run explores every room again.
         function DungeonRooms.Reset()
-            S.Done, S.SkipUntil, S.Blocked = {}, {}, {}
+            S.Done, S.SkipUntil, S.Blocked, S.Skips = {}, {}, {}, {}
             S.CurrentKey = nil
             S.ReadAt = -math.huge
         end

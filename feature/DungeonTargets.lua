@@ -78,6 +78,14 @@ end
 
 local PRIORITY = { pillar = 1, major = 2, mob = 3 }
 
+--// Direction (X, Z) turned by Try eighths of a turn: try 0 is the
+--// direction itself, then 45, 90, ... degrees round the target.
+function Core.TurnEighths(X, Z, Try)
+    local Angle = (Try % 8) * math.pi / 4
+    local Cos, Sin = math.cos(Angle), math.sin(Angle)
+    return X * Cos - Z * Sin, X * Sin + Z * Cos
+end
+
 --// The target to fight from Position ({ X, Y, Z }), or nil. Targets =
 --// { Id, Kind, X, Y, Z, Skipped }: a skipped one (could not be reached) is
 --// left for later.
@@ -192,9 +200,11 @@ return {
 
         --// Half its width seen from above, so big targets (the pillar) are
         --// hit from outside them.
+        --// Capped: a model's box can include big invisible parts, which
+        --// would put the spot to hit it from far off, even off the map.
         local function GetRadius(Object)
             local Size = Object:IsA("Model") and Object:GetExtentsSize() or Object.Size
-            return math.max(Size.X, Size.Z) / 2
+            return math.min(math.max(Size.X, Size.Z) / 2, Config.DUNGEON_MAX_TARGET_RADIUS)
         end
 
         DungeonTargets.IsAlive = IsAlive

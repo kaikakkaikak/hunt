@@ -52,6 +52,8 @@ return {
                 SkipUntil = setmetatable({}, { __mode = "k" }),
                 --// Model -> blocked steps toward it in a row.
                 Blocked = setmetatable({}, { __mode = "k" }),
+                --// Model -> which side of it is tried (TurnEighths).
+                Side = setmetatable({}, { __mode = "k" }),
                 DoorTries = 0,
                 --// Majors alive in the last scan (for SourceIsMajor).
                 Majors = {},
@@ -251,6 +253,8 @@ return {
 
         --// Next to the target, Gap (default ATTACK_DISTANCE) from its edge:
         --// behind a boss or miniboss, on our side of anything else.
+        --// A side we could not reach is replaced by the next one round it
+        --// (S.Side), so a spot inside a wall or over a gap is not retried.
         local function ApproachPoint(Target, Position, Gap)
             local Away = Vector3.new(Position.X - Target.Position.X, 0, Position.Z - Target.Position.Z)
 
@@ -260,11 +264,15 @@ return {
                 Away = Vector3.new(1, 0, 0)
             end
 
-            return Target.Position + Away.Unit * (Target.Radius + (Gap or Config.DUNGEON_ATTACK_DISTANCE))
+            local Side = Target.Model and S.Side[Target.Model] or 0
+            local X, Z = TargetCore.TurnEighths(Away.Unit.X, Away.Unit.Z, Side)
+            return Target.Position + Vector3.new(X, 0, Z) * (Target.Radius + (Gap or Config.DUNGEON_ATTACK_DISTANCE))
         end
 
         local function NoteBlocked(Target, Why)
             print(string.format("[AutoDungeon] Blocked on the way to %s: %s", Target.Name, tostring(Why)))
+            SetStatus(string.format("CAN'T REACH %s: %s", Target.Name, tostring(Why)))
+            S.Side[Target.Model] = (S.Side[Target.Model] or 0) + 1
             local Count = (S.Blocked[Target.Model] or 0) + 1
             S.Blocked[Target.Model] = Count
 
@@ -381,10 +389,11 @@ return {
             SafeMove.SetFacing(nil)
             SetStatus("EXPLORING " .. Room.Name)
 
-            local Result, Why = SafeMove.StepToward(Room.Position, Config.DUNGEON_ROOM_ARRIVE)
+            local Result, Why = SafeMove.StepToward(DungeonRooms.AimPoint(Room), Config.DUNGEON_ROOM_ARRIVE)
 
             if Result == "blocked" then
                 if Why ~= "no character" then
+                    print(string.format("[AutoDungeon] Blocked on the way to room %s: %s", Room.Name, tostring(Why)))
                     DungeonRooms.NoteBlocked(Room, Why)
                 end
 
