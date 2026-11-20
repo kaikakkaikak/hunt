@@ -142,6 +142,68 @@ return {
             CAMPER_MOVE_TOLERANCE = 6,
             --// A camper is recognised on join for this long.
             CAMPER_MEMORY_SECONDS = 6 * 3600,
+
+            ------------------------------------------------------------------
+            --// AutoDungeon. Names marked TODO: check with tools/DumpDungeon.lua.
+            ------------------------------------------------------------------
+
+            --// The dungeon's folder in workspace; everything is looked for in it.
+            DUNGEON_ROOT_NAME = "Halloween",
+            DUNGEON_PILLAR_NAMES = { "Ritual Pillar", "RitualPillar" },
+            --// TODO: the miniboss's and the boss's model names. Until then a
+            --// name with a keyword in it counts as one.
+            DUNGEON_MAJOR_NAMES = {},
+            DUNGEON_MAJOR_KEYWORDS = { "boss" },
+            --// The boss door's ProximityPrompt: one whose name, texts or
+            --// parent's name have a keyword in it (empty: any prompt).
+            DUNGEON_DOOR_KEYWORDS = { "door", "gate", "open" },
+            DUNGEON_DOOR_KEY = "E",
+
+            --// Flying: WalkSpeed times this, this far above standing height,
+            --// in legs of at most DUNGEON_STEP_STUDS. The wall check sweeps a
+            --// box this size (X, Y, Z studs).
+            DUNGEON_SPEED_MULTIPLIER = 1.8,
+            DUNGEON_HOVER_OFFSET = 1.5,
+            DUNGEON_STEP_STUDS = 14,
+            DUNGEON_SWEEP_SIZE = { 2.5, 4, 2.5 },
+
+            --// Fighting: hover this far from the target; skills go out while
+            --// it is within ATTACK_RANGE. Monsters within ENGAGE_RADIUS of us
+            --// are fought before anything else (the ones on the way).
+            DUNGEON_ATTACK_DISTANCE = 6,
+            DUNGEON_ATTACK_RANGE = 14,
+            DUNGEON_ENGAGE_RADIUS = 30,
+            --// Enum.KeyCode names: skill 1 every 0.2s, the buff (skill 4)
+            --// every BUFF_INTERVAL (pressing it on cooldown does nothing).
+            DUNGEON_SKILL_KEY = "One",
+            DUNGEON_SKILL_INTERVAL = 0.2,
+            DUNGEON_BUFF_KEY = "Four",
+            DUNGEON_BUFF_INTERVAL = 1,
+            --// A target not reached after this many blocked legs is left
+            --// for this long.
+            DUNGEON_BLOCKED_TRIES = 3,
+            DUNGEON_UNREACHABLE_SECONDS = 15,
+            --// After a boss was seen, nothing left for this long = cleared.
+            DUNGEON_DONE_SECONDS = 10,
+            DUNGEON_TICK = 0.1,
+
+            --// Boss skill warnings. TODO: their part names, once known; until
+            --// then (DETECT_UNNAMED) any new flat, wide, non-colliding part
+            --// counts, green ones as the safe zone.
+            DUNGEON_SKILL_PART_NAMES = {},
+            DUNGEON_SAFE_ZONE_NAMES = {},
+            DUNGEON_DETECT_UNNAMED = true,
+            DUNGEON_SAFE_ZONE_BY_COLOR = true,
+            DUNGEON_GREEN_MARGIN = 60,
+            DUNGEON_TELEGRAPH_MAX_THICKNESS = 2,
+            DUNGEON_TELEGRAPH_MIN_SIZE = 6,
+            --// A warning still there after this is forgotten.
+            DUNGEON_TELEGRAPH_MAX_SECONDS = 8,
+            --// Dodge: stay this far outside a warning; look for a spot in
+            --// rings DODGE_STEP apart, up to DODGE_MAX_DISTANCE away.
+            DUNGEON_DODGE_MARGIN = 3,
+            DUNGEON_DODGE_STEP = 4,
+            DUNGEON_DODGE_MAX_DISTANCE = 40,
         }
     end,
 }

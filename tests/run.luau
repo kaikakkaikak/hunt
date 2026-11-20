@@ -18,6 +18,9 @@ local Walk = LoadSpec("feature/ZoneWalk.lua").Core
 local AutoCore = LoadSpec("feature/GameAuto.lua").Core
 local HuntCore = LoadSpec("feature/AutoHunt.lua").Core
 local ConsoleCore = LoadSpec("feature/Console.lua").Core
+local MoveCore = LoadSpec("feature/SafeMove.lua").Core
+local SkillCore = LoadSpec("feature/SkillWatcher.lua").Core
+local TargetCore = LoadSpec("feature/DungeonTargets.lua").Core
 
 local Passed, Failed = 0, 0
 
@@ -467,6 +470,170 @@ end)
 
 Test("Console Escape makes text safe for RichText", function()
     Equal(ConsoleCore.Escape("<b>&\"'"), "&lt;b&gt;&amp;&quot;&apos;", "escaped")
+end)
+
+------------------------------------------------------------------------
+--// AutoDungeon: SafeMove.Core, SkillWatcher.Core, DungeonTargets.Core
+------------------------------------------------------------------------
+
+local function Near(Actual, Expected, What)
+    if math.abs(Actual - Expected) > 1e-6 then
+        error(string.format("%s: expected %s, got %s", What or "value", tostring(Expected), tostring(Actual)), 2)
+    end
+end
+
+local function With(Overrides)
+    local Copy = table.clone(Cfg)
+
+    for Key, Value in pairs(Overrides) do
+        Copy[Key] = Value
+    end
+
+    return Copy
+end
+
+--// A part lying level: X and Z sides flat, Y up.
+local function Axes(SizeX, SizeY, SizeZ)
+    return {
+        { X = 1, Y = 0, Z = 0, Length = SizeX },
+        { X = 0, Y = 1, Z = 0, Length = SizeY },
+        { X = 0, Y = 0, Z = 1, Length = SizeZ },
+    }
+end
+
+Test("flying speed is WalkSpeed times the multiplier", function()
+    Near(MoveCore.TweenSeconds(36, 16, 1.8), 36 / 28.8, "seconds")
+    Near(MoveCore.TweenSeconds(10, 0, 1.8), 10, "never below 1 stud/s")
+end)
+
+Test("a long leg is cut to the step length", function()
+    Equal(MoveCore.StepFraction(10, 14), 1, "short leg")
+    Near(MoveCore.StepFraction(28, 14), 0.5, "long leg")
+    Equal(MoveCore.StepFraction(0, 14), 1, "no leg")
+end)
+
+Test("stand height for R15 and R6", function()
+    Near(MoveCore.StandHeight(2, 2), 3, "R15")
+    Equal(MoveCore.StandHeight(0, 2), 3, "R6")
+end)
+
+Test("a flat wide non-colliding part is a danger warning, a green one a safe zone", function()
+    local Red = { Name = "Effect", R = 255, G = 30, B = 30, SizeX = 20, SizeY = 0.5, SizeZ = 20, CanCollide = false }
+    local Green = { Name = "Effect", R = 40, G = 230, B = 60, SizeX = 20, SizeY = 0.5, SizeZ = 20, CanCollide = false }
+
+    Equal(SkillCore.Classify(Red, Cfg), "avoid", "red")
+    Equal(SkillCore.Classify(Green, Cfg), "goto", "green")
+end)
+
+Test("walls, small bits and tall parts are not warnings", function()
+    local Wall = { Name = "Wall", R = 255, G = 0, B = 0, SizeX = 20, SizeY = 0.5, SizeZ = 20, CanCollide = true }
+    local Spark = { Name = "Spark", R = 255, G = 0, B = 0, SizeX = 1, SizeY = 0.2, SizeZ = 1, CanCollide = false }
+    local Beam = { Name = "Beam", R = 255, G = 0, B = 0, SizeX = 4, SizeY = 30, SizeZ = 4, CanCollide = false }
+
+    Equal(SkillCore.Classify(Wall, Cfg), nil, "wall")
+    Equal(SkillCore.Classify(Spark, Cfg), nil, "spark")
+    Equal(SkillCore.Classify(Beam, Cfg), nil, "beam")
+end)
+
+Test("named warnings count whatever their shape; unnamed ones only when allowed", function()
+    local Named = With({ DUNGEON_SKILL_PART_NAMES = { "SlamWarn" }, DUNGEON_SAFE_ZONE_NAMES = { "SafeCircle" }, DUNGEON_DETECT_UNNAMED = false })
+    local Tall = { Name = "slamwarn", R = 0, G = 0, B = 0, SizeX = 4, SizeY = 30, SizeZ = 4, CanCollide = true }
+    local Safe = { Name = "SafeCircle", R = 255, G = 0, B = 0, SizeX = 4, SizeY = 30, SizeZ = 4, CanCollide = true }
+    local Other = { Name = "Effect", R = 255, G = 0, B = 0, SizeX = 20, SizeY = 0.5, SizeZ = 20, CanCollide = false }
+
+    Equal(SkillCore.Classify(Tall, Named), "avoid", "named danger")
+    Equal(SkillCore.Classify(Safe, Named), "goto", "named safe zone")
+    Equal(SkillCore.Classify(Other, Named), nil, "unnamed, detection off")
+end)
+
+Test("a disc's footprint is a circle of its widest level side", function()
+    local Hazard = SkillCore.Footprint(10, 20, Axes(16, 0.5, 12), true)
+
+    Equal(Hazard.Kind, "circle", "kind")
+    Near(Hazard.Radius, 8, "radius")
+    Equal(SkillCore.Contains(Hazard, 17, 20, 0), true, "inside")
+    Equal(SkillCore.Contains(Hazard, 19, 20, 0), false, "outside")
+    Equal(SkillCore.Contains(Hazard, 19, 20, 2), true, "inside with margin")
+end)
+
+Test("a standing cylinder (axis up) uses its two level sides", function()
+    --// Cylinders lie along X; stood up, X points up.
+    local Hazard = SkillCore.Footprint(0, 0, {
+        { X = 0, Y = 1, Z = 0, Length = 0.5 },
+        { X = 1, Y = 0, Z = 0, Length = 18 },
+        { X = 0, Y = 0, Z = 1, Length = 18 },
+    }, true)
+
+    Near(Hazard.Radius, 9, "radius")
+end)
+
+Test("a line attack's footprint is a box, not a huge circle", function()
+    local Hazard = SkillCore.Footprint(0, 0, Axes(4, 0.5, 40), false)
+
+    Equal(Hazard.Kind, "box", "kind")
+    Equal(SkillCore.Contains(Hazard, 1, 19, 0), true, "on the line")
+    Equal(SkillCore.Contains(Hazard, 3, 0, 0), false, "beside the line")
+end)
+
+Test("the safe spot is outside every warning and close by", function()
+    local Hazards = { { Kind = "circle", X = 0, Z = 0, Radius = 10 } }
+    local X, Z = SkillCore.FindSafeSpot(0, 0, Hazards, nil, Cfg, function()
+        return true
+    end)
+
+    Truthy(X, "found")
+    Equal(SkillCore.InAny(Hazards, X, Z, Cfg.DUNGEON_DODGE_MARGIN), false, "outside with margin")
+    Truthy(math.sqrt(X * X + Z * Z) <= 10 + Cfg.DUNGEON_DODGE_MARGIN + Cfg.DUNGEON_DODGE_STEP, "close")
+end)
+
+Test("the safe spot skips unusable points and stays near the boss", function()
+    local Hazards = { { Kind = "circle", X = 0, Z = 0, Radius = 10 } }
+    local Boss = { X = 20, Z = 0 }
+    local X = SkillCore.FindSafeSpot(0, 0, Hazards, Boss, Cfg, function(PX)
+        return PX > 0
+    end)
+
+    Truthy(X and X > 0, "on the boss's side")
+    Equal(SkillCore.FindSafeSpot(0, 0, Hazards, nil, Cfg, function()
+        return false
+    end), nil, "none usable")
+end)
+
+Test("targets: monsters on the way, then rooms, pillar, bosses", function()
+    local At = { X = 0, Y = 0, Z = 0 }
+    local Close = { Kind = "mob", X = 10, Y = 0, Z = 0 }
+    local Far = { Kind = "mob", X = 200, Y = 0, Z = 0 }
+    local Pillar = { Kind = "pillar", X = 5, Y = 0, Z = 0 }
+    local Boss = { Kind = "major", X = 2, Y = 0, Z = 0 }
+
+    Equal(TargetCore.Pick({ Boss, Pillar, Far, Close }, At, Cfg), Close, "near mob first")
+    Equal(TargetCore.Pick({ Boss, Pillar, Far }, At, Cfg), Far, "rooms before the pillar")
+    Equal(TargetCore.Pick({ Boss, Pillar }, At, Cfg), Pillar, "pillar before bosses")
+    Equal(TargetCore.Pick({ Boss }, At, Cfg), Boss, "boss")
+    Equal(TargetCore.Pick({}, At, Cfg), nil, "nothing")
+end)
+
+Test("an unreachable target is left for later", function()
+    local At = { X = 0, Y = 0, Z = 0 }
+    local Stuck = { Kind = "mob", X = 5, Y = 0, Z = 0, Skipped = true }
+    local Boss = { Kind = "major", X = 50, Y = 0, Z = 0 }
+
+    Equal(TargetCore.Pick({ Stuck, Boss }, At, Cfg), Boss, "skipped")
+end)
+
+Test("target kinds by name", function()
+    local Named = With({ DUNGEON_MAJOR_NAMES = { "Pumpkin King" } })
+
+    Equal(TargetCore.Kind("Ritual Pillar", Named), "pillar", "pillar")
+    Equal(TargetCore.Kind("pumpkin king", Named), "major", "major by name")
+    Equal(TargetCore.Kind("MiniBoss_Witch", Named), "major", "major by keyword")
+    Equal(TargetCore.Kind("Skeleton", Named), "mob", "mob")
+end)
+
+Test("door prompts by keyword", function()
+    Equal(TargetCore.IsDoorText({ "ProximityPrompt", "Open", "", "BossGate" }, Cfg), true, "door")
+    Equal(TargetCore.IsDoorText({ "ProximityPrompt", "Talk", "", "NPC" }, Cfg), false, "not a door")
+    Equal(TargetCore.IsDoorText({ "Talk" }, With({ DUNGEON_DOOR_KEYWORDS = {} })), true, "no keywords: any")
 end)
 
 print(string.format("%d passed, %d failed", Passed, Failed))

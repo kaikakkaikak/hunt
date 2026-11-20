@@ -1,5 +1,6 @@
 -- UI is a small draggable window: pick the boss to hunt, Start / Stop,
--- Hop After Kill, Hop Now, Console, and the current status. Each boss shows
+-- Hop After Kill, Auto Dungeon, Hop Now, Console, and the current status
+-- (AutoDungeon's while it runs). Each boss shows
 -- how many times it was killed.
 --
 -- The "-" button shrinks it to a bar with only the selected boss, its
@@ -7,12 +8,13 @@
 -- stays small across hops.
 return {
     Name = "UI",
-    Dependencies = {"Config", "Settings", "AutoHunt", "Widgets", "ConsolePanel"},
+    Dependencies = {"Config", "Settings", "AutoHunt", "AutoDungeon", "Widgets", "ConsolePanel"},
 
     Start = function(Context)
         local Config = Context.Config
         local Settings = Context.Settings
         local AutoHunt = Context.AutoHunt
+        local AutoDungeon = Context.AutoDungeon
         local Widgets = Context.Widgets
         local ConsolePanel = Context.ConsolePanel
         local Lifetime = Context.Lifetime
@@ -135,9 +137,10 @@ return {
         Create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = List })
 
         local HopAfterKill = Widgets.Button(Window, "", 5)
-        local RunButton = Widgets.Button(Window, "", 6)
-        local HopNow = Widgets.Button(Window, "HOP NOW", 7)
-        local ConsoleButton = Widgets.Button(Window, "CONSOLE", 8)
+        local DungeonButton = Widgets.Button(Window, "", 6)
+        local RunButton = Widgets.Button(Window, "", 7)
+        local HopNow = Widgets.Button(Window, "HOP NOW", 8)
+        local ConsoleButton = Widgets.Button(Window, "CONSOLE", 9)
 
         ------------------------------------------------------------------------
         --// Compact bar: boss, kills, Play / Stop
@@ -188,6 +191,10 @@ return {
                 KillsLabel.Text = string.format("KILLS TOTAL: %d", Total)
                 CompactLabel.Text = "NO BOSS SELECTED"
             end
+
+            if Data.Dungeon then
+                CompactLabel.Text = "DUNGEON: " .. AutoDungeon:GetStatus()
+            end
         end
 
         local function PaintBoss(Button, Name)
@@ -207,12 +214,14 @@ return {
 
         local function PaintControls()
             HopAfterKill.Text = "HOP AFTER KILL: " .. (Data.HopAfterKill and "ON" or "OFF")
+            DungeonButton.Text = "AUTO DUNGEON: " .. (Data.Dungeon and "ON" or "OFF")
+            DungeonButton.BackgroundColor3 = Data.Dungeon and COLOR.On or COLOR.Row
             RunButton.Text = Data.Running and "STOP" or "START"
-            CompactRun.Text = Data.Running and "STOP" or "PLAY"
-
-            for _, Button in ipairs({ RunButton, CompactRun }) do
-                Button.BackgroundColor3 = Data.Running and COLOR.Off or COLOR.On
-            end
+            --// The compact bar's button stops whichever is running.
+            local AnyRunning = Data.Running or Data.Dungeon
+            CompactRun.Text = AnyRunning and "STOP" or "PLAY"
+            RunButton.BackgroundColor3 = Data.Running and COLOR.Off or COLOR.On
+            CompactRun.BackgroundColor3 = AnyRunning and COLOR.Off or COLOR.On
         end
 
         --// Shows the full window or the compact bar, at the same spot.
@@ -257,12 +266,29 @@ return {
             PaintControls()
         end)
 
-        for _, Button in ipairs({ RunButton, CompactRun }) do
-            Lifetime.Connect(Button.Activated, function()
+        Lifetime.Connect(DungeonButton.Activated, function()
+            AutoDungeon:SetRunning(not Data.Dungeon)
+            PaintControls()
+        end)
+
+        Lifetime.Connect(RunButton.Activated, function()
+            if not Data.Running then
+                AutoDungeon:SetRunning(false)
+            end
+
+            AutoHunt:SetRunning(not Data.Running)
+            PaintControls()
+        end)
+
+        Lifetime.Connect(CompactRun.Activated, function()
+            if Data.Dungeon then
+                AutoDungeon:SetRunning(false)
+            else
                 AutoHunt:SetRunning(not Data.Running)
-                PaintControls()
-            end)
-        end
+            end
+
+            PaintControls()
+        end)
 
         Lifetime.Connect(HopNow.Activated, function()
             AutoHunt:HopNow()
@@ -291,7 +317,8 @@ return {
 
         task.spawn(function()
             while Lifetime.Alive do
-                Status.Text = "STATUS: " .. AutoHunt:GetStatus()
+                local Source = AutoDungeon:IsRunning() and AutoDungeon or AutoHunt
+                Status.Text = "STATUS: " .. Source:GetStatus()
                 --// Picks up new kill counts and a Stop from elsewhere.
                 PaintAllBosses()
                 PaintKills()

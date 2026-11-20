@@ -51,6 +51,8 @@ return {
                 Kills = {},
                 --// The UI is shrunk to its compact bar.
                 Compact = false,
+                --// AutoDungeon is on.
+                Dungeon = false,
             },
         }
 
@@ -89,6 +91,10 @@ return {
 
             if type(Saved.Compact) == "boolean" then
                 Data.Compact = Saved.Compact
+            end
+
+            if type(Saved.Dungeon) == "boolean" then
+                Data.Dungeon = Saved.Dungeon
             end
 
             if Saved.Kills ~= nil then
