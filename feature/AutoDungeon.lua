@@ -22,9 +22,10 @@
 -- COLLECT BOXES says), then Replay is pressed on the summary that follows
 -- (DungeonEnd) and the next run starts from the first room.
 --
--- While a miniboss or the boss is alive, its green safe zone (SkillWatcher)
--- comes first and is flown into. Other warnings are only dodged with
--- Config.DUNGEON_DODGE_DANGER on; by default the fight goes on behind it.
+-- While a miniboss or the boss is alive, its skill warnings (SkillWatcher)
+-- come first, as picked in the UI: GREEN SAFE ZONE (on by default) flies
+-- into the green zone; DODGE BOSS SKILLS (off by default) leaves any other
+-- warning we stand in. With both off the fight goes on behind the boss.
 return {
     Name = "AutoDungeon",
     Dependencies = {"Config", "Settings", "SafeMove", "SkillWatcher", "DungeonTargets", "DungeonRooms", "DungeonEnd", "KeyPress", "GameAuto", "AutoHunt"},
@@ -616,7 +617,7 @@ return {
             end
 
             local Targets = Scan()
-            SkillWatcher.SetEnabled(#S.Majors > 0)
+            SkillWatcher.SetEnabled(#S.Majors > 0 and (Data.DungeonDodge or Data.DungeonSafeZone))
             S.SawMajor = S.SawMajor or #S.Majors > 0
 
             local FinalAlive = IsFinalAlive()
@@ -633,10 +634,13 @@ return {
 
             local Hazards, Zones = SkillWatcher.GetActive()
 
-            --// Only the green safe zone is acted on unless dodging is on:
-            --// otherwise the fight goes on behind the boss.
-            if not Config.DUNGEON_DODGE_DANGER then
+            --// Picked in the UI (DODGE BOSS SKILLS, GREEN SAFE ZONE).
+            if not Data.DungeonDodge then
                 Hazards = {}
+            end
+
+            if not Data.DungeonSafeZone then
+                Zones = {}
             end
 
             if EnterSafeZone(Zones, Position) or Dodge(Hazards, Position) then

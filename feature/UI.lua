@@ -3,7 +3,8 @@
 --   HUNT     pick the boss to hunt (each with its kills), Hop After Kill,
 --            Start / Stop and Hop Now;
 --   DUNGEON  Start / Stop the auto dungeon, and whether it checks the rooms
---            (flies into each so its monsters spawn) and collects the boxes.
+--            (flies into each so its monsters spawn), collects the boxes,
+--            dodges the boss's skills and flies into its green safe zone.
 -- The status line shows the open page's feature; Console is on both.
 --
 -- The "-" button shrinks it to a bar with only the selected boss (or the
@@ -188,6 +189,8 @@ return {
         local DungeonRun = Widgets.Button(DungeonPage, "", 1)
         local CheckRooms = CheckButton(DungeonPage, 2)
         local CollectBoxes = CheckButton(DungeonPage, 3)
+        local DodgeSkills = CheckButton(DungeonPage, 4)
+        local SafeZone = CheckButton(DungeonPage, 5)
 
         local ConsoleButton = Widgets.Button(Window, "CONSOLE", 5)
 
@@ -274,6 +277,8 @@ return {
             PaintRun(DungeonRun, Data.Dungeon, "START DUNGEON")
             PaintCheck(CheckRooms, "CHECK ROOMS", Data.DungeonRooms)
             PaintCheck(CollectBoxes, "COLLECT BOXES", Data.DungeonLoot)
+            PaintCheck(DodgeSkills, "DODGE BOSS SKILLS", Data.DungeonDodge)
+            PaintCheck(SafeZone, "GREEN SAFE ZONE", Data.DungeonSafeZone)
             --// The compact bar's button stops whichever is running.
             PaintRun(CompactRun, Data.Running or Data.Dungeon, "PLAY")
         end
@@ -346,6 +351,8 @@ return {
         Toggle(HopAfterKill, "HopAfterKill")
         Toggle(CheckRooms, "DungeonRooms")
         Toggle(CollectBoxes, "DungeonLoot")
+        Toggle(DodgeSkills, "DungeonDodge")
+        Toggle(SafeZone, "DungeonSafeZone")
 
         Lifetime.Connect(DungeonRun.Activated, function()
             AutoDungeon:SetRunning(not Data.Dungeon)

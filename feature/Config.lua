@@ -247,9 +247,6 @@ return {
             DUNGEON_TELEGRAPH_MIN_SIZE = 6,
             --// A warning still there after this is forgotten.
             DUNGEON_TELEGRAPH_MAX_SECONDS = 8,
-            --// Leave the boss's danger warnings (off: only the green safe
-            --// zone is acted on, the fight goes on behind the boss).
-            DUNGEON_DODGE_DANGER = false,
             --// Dodge: stay this far outside a warning; look for a spot in
             --// rings DODGE_STEP apart, up to DODGE_MAX_DISTANCE away.
             DUNGEON_DODGE_MARGIN = 3,

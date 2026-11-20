@@ -56,6 +56,10 @@ return {
                 --// AutoDungeon flies into each room / collects the boxes.
                 DungeonRooms = true,
                 DungeonLoot = true,
+                --// AutoDungeon leaves the boss's danger warnings / flies
+                --// into its green safe zone.
+                DungeonDodge = false,
+                DungeonSafeZone = true,
                 --// The UI page open: "hunt" or "dungeon".
                 Tab = "hunt",
             },
@@ -98,7 +102,7 @@ return {
                 Data.Compact = Saved.Compact
             end
 
-            for _, Key in ipairs({ "Dungeon", "DungeonRooms", "DungeonLoot" }) do
+            for _, Key in ipairs({ "Dungeon", "DungeonRooms", "DungeonLoot", "DungeonDodge", "DungeonSafeZone" }) do
                 if type(Saved[Key]) == "boolean" then
                     Data[Key] = Saved[Key]
                 end
