@@ -4,7 +4,8 @@
 --            Start / Stop and Hop Now;
 --   DUNGEON  Start / Stop the auto dungeon, and whether it checks the rooms
 --            (flies into each so its monsters spawn), collects the boxes,
---            dodges the boss's skills and flies into its green safe zone.
+--            dodges the boss's skills, flies into its green safe zone and
+--            hits the boss from behind.
 -- The status line shows the open page's feature; Console is on both.
 --
 -- The "-" button shrinks it to a bar with only the selected boss (or the
@@ -191,6 +192,7 @@ return {
         local CollectBoxes = CheckButton(DungeonPage, 3)
         local DodgeSkills = CheckButton(DungeonPage, 4)
         local SafeZone = CheckButton(DungeonPage, 5)
+        local Backstab = CheckButton(DungeonPage, 6)
 
         local ConsoleButton = Widgets.Button(Window, "CONSOLE", 5)
 
@@ -279,6 +281,7 @@ return {
             PaintCheck(CollectBoxes, "COLLECT BOXES", Data.DungeonLoot)
             PaintCheck(DodgeSkills, "DODGE BOSS SKILLS", Data.DungeonDodge)
             PaintCheck(SafeZone, "GREEN SAFE ZONE", Data.DungeonSafeZone)
+            PaintCheck(Backstab, "HIT BOSS FROM BEHIND", Data.DungeonBackstab)
             --// The compact bar's button stops whichever is running.
             PaintRun(CompactRun, Data.Running or Data.Dungeon, "PLAY")
         end
@@ -353,6 +356,7 @@ return {
         Toggle(CollectBoxes, "DungeonLoot")
         Toggle(DodgeSkills, "DungeonDodge")
         Toggle(SafeZone, "DungeonSafeZone")
+        Toggle(Backstab, "DungeonBackstab")
 
         Lifetime.Connect(DungeonRun.Activated, function()
             AutoDungeon:SetRunning(not Data.Dungeon)

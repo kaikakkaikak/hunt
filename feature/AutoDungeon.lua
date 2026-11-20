@@ -302,7 +302,7 @@ return {
         local function ApproachPoint(Target, Position, Gap)
             local Away = Vector3.new(Position.X - Target.Position.X, 0, Position.Z - Target.Position.Z)
 
-            if Target.Kind == "major" and Target.Look then
+            if Target.Kind == "major" and Target.Look and Data.DungeonBackstab then
                 Away = -Target.Look
             elseif Away.Magnitude < 0.1 then
                 Away = Vector3.new(1, 0, 0)

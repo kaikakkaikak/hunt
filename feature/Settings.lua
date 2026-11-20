@@ -60,6 +60,8 @@ return {
                 --// into its green safe zone.
                 DungeonDodge = false,
                 DungeonSafeZone = true,
+                --// AutoDungeon hits the boss and miniboss from behind.
+                DungeonBackstab = true,
                 --// The UI page open: "hunt" or "dungeon".
                 Tab = "hunt",
             },
@@ -102,7 +104,7 @@ return {
                 Data.Compact = Saved.Compact
             end
 
-            for _, Key in ipairs({ "Dungeon", "DungeonRooms", "DungeonLoot", "DungeonDodge", "DungeonSafeZone" }) do
+            for _, Key in ipairs({ "Dungeon", "DungeonRooms", "DungeonLoot", "DungeonDodge", "DungeonSafeZone", "DungeonBackstab" }) do
                 if type(Saved[Key]) == "boolean" then
                     Data[Key] = Saved[Key]
                 end
