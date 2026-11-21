@@ -9,9 +9,10 @@
 -- under them (pits, out of the map) are never flown to.
 --
 -- While Config.DUNGEON_FLY_THROUGH_BLOCKED is on and the caller allows it
--- (SetFlyThrough: AutoDungeon, once the ritual pillar was a target), a way
--- that cannot be
--- flown without touching anything is flown through anyway:
+-- for that leg (StepToward's Through: AutoDungeon, only when the way on
+-- cannot be found after the pillar and its monsters, or the boss cannot be
+-- found), a way that cannot be flown without touching anything is flown
+-- through anyway:
 --   "path blocked" (every leg of the path hits something, often an
 --   invisible part the game lets players through): the next waypoint;
 --   "no path" (PathfindingService finds none, e.g. the next part of the
@@ -368,17 +369,6 @@ return {
                 and os.clock() - Path.Since < PATH_MAX_AGE
         end
 
-        --// Off until the caller allows it (SetFlyThrough).
-        local FlyThroughAllowed = false
-
-        local function CanFlyThrough()
-            return Config.DUNGEON_FLY_THROUGH_BLOCKED and FlyThroughAllowed
-        end
-
-        function SafeMove.SetFlyThrough(Allowed)
-            FlyThroughAllowed = Allowed == true
-        end
-
         --// The furthest clear waypoint ahead on Path, moving its index
         --// there (never back), or nil when none is clear.
         local function AimOnPath(Path, From)
@@ -399,16 +389,15 @@ return {
         --// the path being followed. The path is kept between legs, so a
         --// corner is flown round to its end instead of being found again
         --// (and differently) each leg. Nil and why when there is none.
-        --// Solid: walls are never flown through on this leg, even when
-        --// SetFlyThrough allows it (fighting a monster: a wall must be
-        --// gone round, it cannot be hit through).
-        local function NextPoint(From, Target, Solid)
+        --// Allowed: walls may be flown through on this leg when no way
+        --// round is found. Otherwise they never are.
+        local function NextPoint(From, Target, Allowed)
             if SafeMove.IsClear(From, Target) then
                 S.Path = nil
                 return Target
             end
 
-            local Through = not Solid and CanFlyThrough()
+            local Through = Allowed == true and Config.DUNGEON_FLY_THROUGH_BLOCKED
 
             if not IsPathFresh(S.Path, Target) then
                 S.Path = NewPath(From, Target)
@@ -452,9 +441,9 @@ return {
 
         --// One leg (at most Config.DUNGEON_STEP_STUDS) toward Destination.
         --// "arrived" within ArriveDistance, "moved", "cancelled", or
-        --// "blocked" and why. Solid: never through a wall on this leg.
-        --// Yields while flying.
-        function SafeMove.StepToward(Destination, ArriveDistance, Solid)
+        --// "blocked" and why. Through: a wall with no way round may be
+        --// flown through on this leg (never, when not given). Yields.
+        function SafeMove.StepToward(Destination, ArriveDistance, Through)
             if not S.Engaged and not SafeMove.Engage() then
                 return "blocked", "no character"
             end
@@ -471,7 +460,7 @@ return {
                 return "arrived"
             end
 
-            local Point, Why = NextPoint(From, Target, Solid)
+            local Point, Why = NextPoint(From, Target, Through)
 
             if not Point then
                 return "blocked", Why

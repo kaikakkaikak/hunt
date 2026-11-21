@@ -203,6 +203,7 @@ return {
             return Prompt:GetFullName()
         end
         local SightedApproach
+        local UpdateThrough
 
         local function ApproachPoint(Target, Position, Gap, SideOverride)
             local Away = Vector3.new(Position.X - Target.Position.X, 0, Position.Z - Target.Position.Z)
@@ -260,8 +261,7 @@ return {
 
                 if Target.Kind == "pillar" and not S.SawPillar then
                     S.SawPillar = true
-                    SafeMove.SetFlyThrough(true)
-                    print("[AutoDungeon] Pillar reached: walls may be flown through from now on")
+                    print("[AutoDungeon] Pillar found")
                 end
                 S.Side[Target.Model] = nil
 
@@ -284,11 +284,9 @@ return {
                 return
             end
 
-            --// Monsters and bosses are never flown to through a wall (a hit
-            --// cannot pass it): the path goes round to the open side. Only
-            --// the pillar may be flown through to, once allowed.
-            local Solid = Target.Kind ~= "pillar"
-            local Result, Why = SafeMove.StepToward(Point, APPROACH_ARRIVE, Solid)
+            --// Never through a wall to a target (skills stop at walls and
+            --// would do no damage): the path goes round to the open side.
+            local Result, Why = SafeMove.StepToward(Point, APPROACH_ARRIVE)
 
             if Result == "blocked" then
                 --// Our own death is not the target's fault.
@@ -322,7 +320,7 @@ return {
             if Distance(Position, PromptPosition) > Prompt.MaxActivationDistance - 0.5 then
                 SetStatus(Label)
                 local Front = ApproachPoint({ Position = PromptPosition, Radius = 0 }, Position, Reach)
-                local Result, Why = SafeMove.StepToward(Front, APPROACH_ARRIVE)
+                local Result, Why = SafeMove.StepToward(Front, APPROACH_ARRIVE, S.Through)
 
                 if Result == "blocked" then
                     SetStatus(Label .. ": UNREACHABLE (" .. tostring(Why) .. ")")
@@ -394,7 +392,7 @@ return {
             SafeMove.SetFacing(nil)
             SetStatus(Label)
 
-            local Result, Why = SafeMove.StepToward(Point, Config.DUNGEON_ROOM_ARRIVE)
+            local Result, Why = SafeMove.StepToward(Point, Config.DUNGEON_ROOM_ARRIVE, S.Through)
 
             if Result == "blocked" then
                 if Why ~= "no character" then
@@ -467,7 +465,7 @@ return {
         --// left as it is (pressing it here would toggle it off).
         local function ResetRun()
             S.SawMajor, S.SawFinal, S.SawPillar, S.Ending, S.IdleSince = false, false, false, nil, nil
-            SafeMove.SetFlyThrough(false)
+            S.Through = false
             S.Target = nil
             S.PromptTries = {}
             S.RunRoot = DungeonTargets.GetRoot()
@@ -561,6 +559,31 @@ return {
             task.wait(IDLE_WAIT)
         end
 
+        --// Whether walls with no way round may be flown through on the way
+        --// on (rooms, points, door, boxes): only once the pillar is down
+        --// and every monster is dead (the way on cannot be found), or
+        --// while looking for the boss (the miniboss is dead). Never in a
+        --// fight: skills stop at walls.
+        function UpdateThrough(Targets)
+            local PillarAlive, MobsLeft = false, 0
+
+            for _, Target in ipairs(Targets) do
+                PillarAlive = PillarAlive or Target.Kind == "pillar"
+                MobsLeft += Target.Kind == "mob" and 1 or 0
+            end
+
+            local PillarDone = S.SawPillar and not PillarAlive
+            local LookingForBoss = PillarDone and S.SawMajor and #S.Majors == 0 and not S.SawFinal
+            local Through = (PillarDone and MobsLeft == 0) or LookingForBoss
+
+            if Through ~= (S.Through == true) then
+                print(Through and "[AutoDungeon] Pillar and monsters done: walls with no way round may be flown through"
+                    or "[AutoDungeon] Walls are solid again")
+            end
+
+            S.Through = Through
+        end
+
         local function Step()
             if not IsActive() then
                 SkillWatcher.SetEnabled(false)
@@ -621,6 +644,8 @@ return {
                 S.IdleSince, S.DoorLogged, S.NothingLogged = nil, false, false
                 return Fight(Picked.Entry, Position, Hazards)
             end
+
+            UpdateThrough(Targets)
 
             --// Both can be switched off in the UI (CHECK ROOMS, COLLECT BOXES).
             --// Only boxes close by (the room we are in): one across the map
