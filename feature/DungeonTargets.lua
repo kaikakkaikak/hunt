@@ -470,6 +470,55 @@ return {
             Prompt:InputHoldEnd()
         end
 
+        --// The game's box remote (Config.DUNGEON_LOOT_REMOTE, anywhere in
+        --// ReplicatedStorage), kept once found.
+        local LootRemote = nil
+
+        local function FindLootRemote()
+            if LootRemote and LootRemote.Parent then
+                return LootRemote
+            end
+
+            local Name = Config.DUNGEON_LOOT_REMOTE
+            local Storage = game:GetService("ReplicatedStorage")
+            LootRemote = Name and Name ~= "" and Storage:FindFirstChild(Name, true) or nil
+
+            if LootRemote and not (LootRemote:IsA("RemoteEvent") or LootRemote:IsA("RemoteFunction")) then
+                LootRemote = nil
+            end
+
+            return LootRemote
+        end
+
+        --// Fires the box remote with the box's model. True when fired.
+        local function FireLootRemote(Prompt)
+            local Remote = FindLootRemote()
+            local Box = Prompt:FindFirstAncestorWhichIsA("Model") or Prompt.Parent
+
+            if not Remote or not Box then
+                return false
+            end
+
+            print("[AutoDungeon] Firing " .. Remote:GetFullName() .. " with " .. Box:GetFullName())
+
+            local Ok, Why = pcall(function()
+                if Remote:IsA("RemoteEvent") then
+                    Remote:FireServer(Box)
+                else
+                    --// Would wait for the server's answer: not here.
+                    task.spawn(function()
+                        pcall(Remote.InvokeServer, Remote, Box)
+                    end)
+                end
+            end)
+
+            if not Ok then
+                warn("[AutoDungeon] Box remote failed: " .. tostring(Why))
+            end
+
+            return Ok
+        end
+
         --// One way to open the door per try, cycling: the executor's
         --// fireproximityprompt, the prompt's own hold, then holding E.
         local OPENERS = {
@@ -500,6 +549,15 @@ return {
             pcall(function()
                 Prompt.RequiresLineOfSight = false
             end)
+
+            --// A box: the game's own remote first (no key, no hold).
+            if not Core.IsDoorText(PromptTexts(Prompt), Config) and FireLootRemote(Prompt) then
+                task.wait(DOOR_SETTLE)
+
+                if DungeonTargets.IsPromptDone(Prompt) then
+                    return true
+                end
+            end
 
             local Opener = OPENERS[(Try - 1) % #OPENERS + 1]
             local Ok, Used = pcall(Opener, Prompt)

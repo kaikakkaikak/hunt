@@ -188,6 +188,9 @@ return {
             --// way and stopped at whenever one is this close.
             DUNGEON_SECRET_CHEST_NAMES = { "Secret Chest" },
             DUNGEON_SECRET_RADIUS = 60,
+            --// The game's remote that opens a box (fired with the box's
+            --// model before its prompt is tried); "" to not use one.
+            DUNGEON_LOOT_REMOTE = "OpenLootBox",
 
             --// The end: this boss dying ends the run. The end chest is
             --// waited for up to END_CHEST_WAIT seconds, the summary's Replay
