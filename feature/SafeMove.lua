@@ -399,18 +399,23 @@ return {
         --// the path being followed. The path is kept between legs, so a
         --// corner is flown round to its end instead of being found again
         --// (and differently) each leg. Nil and why when there is none.
-        local function NextPoint(From, Target)
+        --// Solid: walls are never flown through on this leg, even when
+        --// SetFlyThrough allows it (fighting a monster: a wall must be
+        --// gone round, it cannot be hit through).
+        local function NextPoint(From, Target, Solid)
             if SafeMove.IsClear(From, Target) then
                 S.Path = nil
                 return Target
             end
+
+            local Through = not Solid and CanFlyThrough()
 
             if not IsPathFresh(S.Path, Target) then
                 S.Path = NewPath(From, Target)
             end
 
             if not S.Path then
-                return CanFlyThrough() and Target or nil, "no path"
+                return Through and Target or nil, "no path"
             end
 
             local Point = S.Path.Index <= #S.Path.Points and AimOnPath(S.Path, From)
@@ -421,15 +426,20 @@ return {
                 Point = S.Path and AimOnPath(S.Path, From)
             end
 
-            if not Point and S.Path and CanFlyThrough() then
-                --// The path still says where to go: follow it through.
+            if not Point and S.Path then
+                --// The path still says where to go. Flown through when
+                --// allowed; when solid, only if the thin line to the next
+                --// waypoint is clear (the box only scraped a corner).
                 local Points = S.Path.Points
                 local Index = math.min(Core.AdvanceIndex(Points, S.Path.Index, From.X, From.Z, WAYPOINT_REACHED), #Points)
-                S.Path.Index = Index
-                return Points[Index]
+
+                if Through or SafeMove.CanSee(From, Points[Index]) then
+                    S.Path.Index = Index
+                    return Points[Index]
+                end
             end
 
-            if not Point and not S.Path and CanFlyThrough() then
+            if not Point and not S.Path and Through then
                 return Target
             end
 
@@ -442,8 +452,9 @@ return {
 
         --// One leg (at most Config.DUNGEON_STEP_STUDS) toward Destination.
         --// "arrived" within ArriveDistance, "moved", "cancelled", or
-        --// "blocked" and why. Yields while flying.
-        function SafeMove.StepToward(Destination, ArriveDistance)
+        --// "blocked" and why. Solid: never through a wall on this leg.
+        --// Yields while flying.
+        function SafeMove.StepToward(Destination, ArriveDistance, Solid)
             if not S.Engaged and not SafeMove.Engage() then
                 return "blocked", "no character"
             end
@@ -460,7 +471,7 @@ return {
                 return "arrived"
             end
 
-            local Point, Why = NextPoint(From, Target)
+            local Point, Why = NextPoint(From, Target, Solid)
 
             if not Point then
                 return "blocked", Why

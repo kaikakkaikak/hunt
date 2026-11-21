@@ -284,7 +284,11 @@ return {
                 return
             end
 
-            local Result, Why = SafeMove.StepToward(Point, APPROACH_ARRIVE)
+            --// Monsters and bosses are never flown to through a wall (a hit
+            --// cannot pass it): the path goes round to the open side. Only
+            --// the pillar may be flown through to, once allowed.
+            local Solid = Target.Kind ~= "pillar"
+            local Result, Why = SafeMove.StepToward(Point, APPROACH_ARRIVE, Solid)
 
             if Result == "blocked" then
                 --// Our own death is not the target's fault.
