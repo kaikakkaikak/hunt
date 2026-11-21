@@ -147,13 +147,19 @@ end
 --// shows up: "nearest" is a straight line through walls, so on the way
 --// round a corner another target would keep looking nearer, and we would
 --// turn back and forth between them.
-function Core.Pick(Targets, Position, CurrentId, Cfg)
+--// PillarId: the pillar gone for first. While it stands, other pillars
+--// come after it however near they are (they wait their turn).
+local OTHER_PILLAR = 0.5
+
+function Core.Pick(Targets, Position, CurrentId, Cfg, PillarId)
     local Best, BestRank, BestDistance = nil, math.huge, math.huge
     local Current, CurrentRank = nil, math.huge
-    local PillarStands = false
+    local PillarStands, LockedStands = false, false
 
     for _, Target in ipairs(Targets) do
-        PillarStands = PillarStands or (Target.Kind == "pillar" and not Target.Skipped)
+        local Standing = Target.Kind == "pillar" and not Target.Skipped
+        PillarStands = PillarStands or Standing
+        LockedStands = LockedStands or (Standing and PillarId ~= nil and Target.Id == PillarId)
     end
 
     for _, Target in ipairs(Targets) do
@@ -163,6 +169,10 @@ function Core.Pick(Targets, Position, CurrentId, Cfg)
 
             if Target.Kind == "mob" and Cfg and Target.Visible and Distance <= Cfg.DUNGEON_ENGAGE_RADIUS then
                 Rank = PillarStands and NEAR_MOB_AT_PILLAR or NEAR_MOB
+            end
+
+            if Target.Kind == "pillar" and LockedStands and Target.Id ~= PillarId then
+                Rank += OTHER_PILLAR
             end
 
             if Rank < BestRank or (Rank == BestRank and Distance < BestDistance) then
@@ -541,8 +551,36 @@ return {
             end,
         }
 
+        --// How long a fired prompt gets to go before the next way is tried.
+        local FIRE_SETTLE = 0.6
+
+        --// Fires Prompt without a key or a hold: the box remote (a box,
+        --// when set), then fireproximityprompt. True once it is used up.
+        local function FirePrompt(Prompt)
+            local IsBox = not Core.IsDoorText(PromptTexts(Prompt), Config)
+            local Fired = IsBox and FireLootRemote(Prompt)
+
+            if type(fireproximityprompt) == "function" then
+                Fired = pcall(fireproximityprompt, Prompt) or Fired
+            end
+
+            if not Fired then
+                return false
+            end
+
+            local Deadline = os.clock() + FIRE_SETTLE
+
+            repeat
+                task.wait(0.1)
+            until DungeonTargets.IsPromptDone(Prompt) or os.clock() >= Deadline
+
+            return DungeonTargets.IsPromptDone(Prompt)
+        end
+
         --// Try number Try (1, 2, ...) at a prompt (the door, a box); we must
-        --// be in range already. True when a method could be used.
+        --// be in range already. Every try fires it first; only a prompt
+        --// still there after that is held (try 2) or held E on (try 3+).
+        --// True when a way could be used.
         function DungeonTargets.UsePrompt(Prompt, Try)
             --// Only on our side: a prompt needing line of sight is not
             --// shown (so not usable) while hovering at an odd angle.
@@ -550,16 +588,16 @@ return {
                 Prompt.RequiresLineOfSight = false
             end)
 
-            --// A box: the game's own remote first (no key, no hold).
-            if not Core.IsDoorText(PromptTexts(Prompt), Config) and FireLootRemote(Prompt) then
-                task.wait(DOOR_SETTLE)
-
-                if DungeonTargets.IsPromptDone(Prompt) then
-                    return true
-                end
+            if FirePrompt(Prompt) then
+                return true
             end
 
-            local Opener = OPENERS[(Try - 1) % #OPENERS + 1]
+            if Try < 2 then
+                return true
+            end
+
+            --// OPENERS[1] is the fire already done.
+            local Opener = OPENERS[math.min(Try, #OPENERS)]
             local Ok, Used = pcall(Opener, Prompt)
             return Ok and Used == true
         end

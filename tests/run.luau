@@ -820,6 +820,19 @@ Test("the auto's state is read from ON / OFF on its button", function()
     Equal(AutoCore.TextState({ "Bonus", "Online" }), nil, "words with on inside")
 end)
 
+Test("the pillar gone for first is kept over a nearer one", function()
+    local At = { X = 0, Y = 0, Z = 0 }
+    local Cfg = { DUNGEON_ENGAGE_RADIUS = 30 }
+    local Near = { Id = "N", Kind = "pillar", X = 10, Y = 0, Z = 0 }
+    local Locked = { Id = "L", Kind = "pillar", X = 100, Y = 0, Z = 0 }
+    local Boss = { Id = "B", Kind = "major", X = 5, Y = 0, Z = 0 }
+
+    Equal(TargetCore.Pick({ Near, Locked }, At, "B", Cfg, "L"), Locked, "locked one")
+    Equal(TargetCore.Pick({ Near, Locked, Boss }, At, "B", Cfg, "L"), Locked, "locked one before the boss")
+    Equal(TargetCore.Pick({ Near, Boss }, At, nil, Cfg, "L"), Near, "locked one gone: the next pillar")
+    Equal(TargetCore.Pick({ Near, Locked }, At, nil, Cfg, nil), Near, "no lock: nearest")
+end)
+
 Test("the boss door is the Stone Door", function()
     Equal(TargetCore.IsDoorText({ "ProximityPrompt", "Hold", "", "Stone Door" }, Cfg), true, "stone door")
 end)

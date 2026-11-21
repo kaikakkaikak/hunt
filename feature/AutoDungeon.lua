@@ -197,10 +197,13 @@ return {
         --// (S.Side), so a spot inside a wall or over a gap is not retried.
         local UsePrompt
 
-        --// A prompt by its path: the game can remake a box's prompt, which
-        --// would start its tries over every time.
+        --// A prompt by its path and place: the game can remake a box's
+        --// prompt (its tries must not start over), and boxes can share a
+        --// path (one box's tries must not count for the next).
         local function PromptKey(Prompt)
-            return Prompt:GetFullName()
+            local Place = Prompt.Parent and DungeonTargets.GetPosition(Prompt.Parent)
+            local Where = Place and string.format("@%d,%d,%d", math.floor(Place.X), math.floor(Place.Y), math.floor(Place.Z)) or ""
+            return Prompt:GetFullName() .. Where
         end
         local SightedApproach
         local UpdateThrough
@@ -210,7 +213,7 @@ return {
         local PROMPT_DONE_WAIT = 1
 
         local function CanTryPrompt(Prompt)
-            return (S.PromptTries[Prompt:GetFullName()] or 0) < Config.DUNGEON_LOOT_TRIES
+            return (S.PromptTries[PromptKey(Prompt)] or 0) < Config.DUNGEON_LOOT_TRIES
         end
 
         --// A boss or miniboss close by: its fight is not left for a chest.
@@ -291,6 +294,11 @@ return {
             end
 
             S.Target = Target
+
+            if Target.Kind == "pillar" and S.PillarId ~= Target.Model then
+                S.PillarId = Target.Model
+                print("[AutoDungeon] Going for this pillar first: " .. Target.Model:GetFullName())
+            end
             SafeMove.SetFacing(Target.Position)
             SetStatus(string.format("FIGHTING %s (%s)", Target.Name, Target.Kind))
 
@@ -501,7 +509,7 @@ return {
         --// left as it is (pressing it here would toggle it off).
         local function ResetRun()
             S.SawMajor, S.SawFinal, S.SawPillar, S.Ending, S.IdleSince = false, false, false, nil, nil
-            S.Through = false
+            S.Through, S.PillarId = false, nil
             S.Target = nil
             S.PromptTries = {}
             S.RunRoot = DungeonTargets.GetRoot()
@@ -688,7 +696,7 @@ return {
                 return UsePrompt(Secret, Position, "COLLECTING THE SECRET CHEST")
             end
 
-            local Picked = TargetCore.Pick(Targets, Flat(Position), S.Target and S.Target.Model, Config)
+            local Picked = TargetCore.Pick(Targets, Flat(Position), S.Target and S.Target.Model, Config, S.PillarId)
 
             if Picked then
                 S.IdleSince, S.DoorLogged, S.NothingLogged = nil, false, false
