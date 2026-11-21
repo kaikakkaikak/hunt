@@ -275,7 +275,9 @@ return {
             SafeMove.SetFacing(Target.Position)
             SetStatus(string.format("FIGHTING %s (%s)", Target.Name, Target.Kind))
 
-            local Point = SightedApproach(Target, Position)
+            --// A monster: straight onto it (a spot beside it could sit in a
+            --// wall). The pillar and bosses keep their side (behind a boss).
+            local Point = Target.Kind == "mob" and Target.Position or SightedApproach(Target, Position)
 
             --// Never fly into a warning: wait it out where we are.
             if SkillCore.InAny(Hazards, Point.X, Point.Z, Config.DUNGEON_DODGE_MARGIN) then
