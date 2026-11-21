@@ -27,6 +27,22 @@ function Core.Normalize(Name)
     return (string.gsub(string.lower(Name), "[%s_%-]", ""))
 end
 
+--// Whether one of Names (a prompt's own name and its ancestors') is a
+--// secret chest's (Cfg.DUNGEON_SECRET_CHEST_NAMES, contained, any case).
+function Core.IsSecretChest(Names, Cfg)
+    for _, Name in ipairs(Names) do
+        local Normal = Core.Normalize(Name)
+
+        for _, Wanted in ipairs(Cfg.DUNGEON_SECRET_CHEST_NAMES) do
+            if string.find(Normal, Core.Normalize(Wanted), 1, true) then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
 local function MatchesName(List, Normal)
     for _, Wanted in ipairs(List) do
         if string.find(Normal, Core.Normalize(Wanted), 1, true) then
@@ -292,8 +308,28 @@ return {
             return false
         end
 
+        --// A prompt's own name and up to SECRET_DEPTH of its ancestors'.
+        local SECRET_DEPTH = 4
+        local Secrets = {}
+
+        local function IsSecretPrompt(Prompt)
+            local Names, Node = { Prompt.Name, Prompt.ObjectText }, Prompt.Parent
+
+            for _ = 1, SECRET_DEPTH do
+                if not Node or Node == workspace then
+                    break
+                end
+
+                table.insert(Names, Node.Name)
+                Node = Node.Parent
+            end
+
+            return Core.IsSecretChest(Names, Config)
+        end
+
         local function ScanNow()
             local Found = {}
+            Secrets = {}
 
             if not DungeonTargets.GetRoot() then
                 return Found
@@ -322,6 +358,8 @@ return {
                     end
                 elseif Kind and IsModel and HasHealth(Object) and not IsPlayerCharacter(Object) and IsAlive(Object) then
                     Add(Object, Kind)
+                elseif Object:IsA("ProximityPrompt") and Object.Enabled and Object.Parent and IsSecretPrompt(Object) then
+                    table.insert(Secrets, Object)
                 end
             end
 
@@ -402,6 +440,30 @@ return {
             return Best
         end
 
+        --// The nearest secret chest's prompt within MaxDistance (from the
+        --// last scan, anywhere in workspace), leaving out those CanTry
+        --// says no to.
+        function DungeonTargets.FindSecret(Position, CanTry, MaxDistance)
+            DungeonTargets.Scan()
+            local Best, BestDistance = nil, math.huge
+
+            for _, Prompt in ipairs(Secrets) do
+                local Place = Prompt.Parent and Prompt.Enabled and GetPosition(Prompt.Parent)
+                local Distance = Place and (Place - Position).Magnitude
+
+                if Distance and Distance <= MaxDistance and Distance < BestDistance and CanTry(Prompt) then
+                    Best, BestDistance = Prompt, Distance
+                end
+            end
+
+            return Best
+        end
+
+        --// Whether Prompt is used up (gone, or switched off by the game).
+        function DungeonTargets.IsPromptDone(Prompt)
+            return Prompt.Parent == nil or not Prompt.Enabled
+        end
+
         local function HoldPrompt(Prompt)
             Prompt:InputHoldBegin()
             task.wait(Prompt.HoldDuration + DOOR_SETTLE)
@@ -433,6 +495,12 @@ return {
         --// Try number Try (1, 2, ...) at a prompt (the door, a box); we must
         --// be in range already. True when a method could be used.
         function DungeonTargets.UsePrompt(Prompt, Try)
+            --// Only on our side: a prompt needing line of sight is not
+            --// shown (so not usable) while hovering at an odd angle.
+            pcall(function()
+                Prompt.RequiresLineOfSight = false
+            end)
+
             local Opener = OPENERS[(Try - 1) % #OPENERS + 1]
             local Ok, Used = pcall(Opener, Prompt)
             return Ok and Used == true

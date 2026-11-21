@@ -806,6 +806,20 @@ Test("the auto's state is read from the button's learned look", function()
     Equal(AutoCore.ReadState("same", "same", "same"), nil, "on and off look alike")
 end)
 
+Test("secret chests are found by name in the prompt's ancestors", function()
+    local Cfg = { DUNGEON_SECRET_CHEST_NAMES = { "Secret Chest" } }
+    Truthy(TargetCore.IsSecretChest({ "ProximityPrompt", "Lid", "SecretChest" }, Cfg), "ancestor")
+    Truthy(TargetCore.IsSecretChest({ "secret_chest_prompt" }, Cfg), "own name")
+    Equal(TargetCore.IsSecretChest({ "ProximityPrompt", "Chest", "Room1" }, Cfg), false, "plain chest")
+end)
+
+Test("the auto's state is read from ON / OFF on its button", function()
+    Equal(AutoCore.TextState({ "AUTO", "ON" }), true, "on")
+    Equal(AutoCore.TextState({ "Auto: Off" }), false, "off")
+    Equal(AutoCore.TextState({ "AUTO" }), nil, "says neither")
+    Equal(AutoCore.TextState({ "Bonus", "Online" }), nil, "words with on inside")
+end)
+
 Test("the boss door is the Stone Door", function()
     Equal(TargetCore.IsDoorText({ "ProximityPrompt", "Hold", "", "Stone Door" }, Cfg), true, "stone door")
 end)

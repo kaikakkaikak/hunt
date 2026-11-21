@@ -204,6 +204,25 @@ return {
         end
         local SightedApproach
         local UpdateThrough
+        --// Waits around a prompt: in range before using it, then for it
+        --// to go (used up) after.
+        local PROMPT_SHOW_WAIT = 0.2
+        local PROMPT_DONE_WAIT = 1
+
+        local function CanTryPrompt(Prompt)
+            return (S.PromptTries[Prompt:GetFullName()] or 0) < Config.DUNGEON_LOOT_TRIES
+        end
+
+        --// A boss or miniboss close by: its fight is not left for a chest.
+        local function MajorClose(Position)
+            for _, Major in ipairs(S.Majors) do
+                if (Major.Position - Position).Magnitude <= Config.DUNGEON_ENGAGE_RADIUS then
+                    return true
+                end
+            end
+
+            return false
+        end
 
         local function ApproachPoint(Target, Position, Gap, SideOverride)
             local Away = Vector3.new(Position.X - Target.Position.X, 0, Position.Z - Target.Position.Z)
@@ -342,7 +361,22 @@ return {
             S.PromptTries[PromptKey(Prompt)] = Try
             SetStatus(string.format("%s (try %d)", Label, Try))
             print(string.format("[AutoDungeon] %s: %s, try %d", Label, Prompt:GetFullName(), Try))
+            --// A moment still in range, so the game shows the prompt.
+            task.wait(PROMPT_SHOW_WAIT)
             DungeonTargets.UsePrompt(Prompt, Try)
+
+            local Deadline = os.clock() + PROMPT_DONE_WAIT
+
+            while os.clock() < Deadline and not DungeonTargets.IsPromptDone(Prompt) do
+                task.wait(Config.DUNGEON_TICK)
+            end
+
+            print(string.format("[AutoDungeon] %s: %s", Label, DungeonTargets.IsPromptDone(Prompt) and "done" or "prompt still there"))
+
+            --// Opening a box can switch the game's auto off.
+            DungeonAttack.CheckSoon()
+            local State = GameAuto:ReadState()
+            print("[GameAuto] After it the auto button looks " .. (State == true and "on" or State == false and "off" or "unknown"))
         end
 
         local function OpenDoor(Prompt, Position)
@@ -638,6 +672,20 @@ return {
 
             if DungeonDodge.Handle(Zones, Hazards, Position, S.Majors, SetStatus) then
                 return
+            end
+
+            --// A secret chest close by is stopped at on the way, whatever
+            --// is going on (but a boss fight).
+            local Secret = Data.DungeonLoot and not MajorClose(Position)
+                and DungeonTargets.FindSecret(Position, CanTryPrompt, Config.DUNGEON_SECRET_RADIUS)
+
+            if Secret then
+                if S.SecretLogged ~= Secret then
+                    S.SecretLogged = Secret
+                    print("[AutoDungeon] Secret chest: " .. Secret:GetFullName())
+                end
+
+                return UsePrompt(Secret, Position, "COLLECTING THE SECRET CHEST")
             end
 
             local Picked = TargetCore.Pick(Targets, Flat(Position), S.Target and S.Target.Model, Config)

@@ -28,6 +28,26 @@ function Core.ReadState(Current, OnLook, OffLook)
     return nil
 end
 
+--// Whether the auto is on from its button's texts (Texts): false when one
+--// says OFF, true when one says ON, nil when none says either.
+function Core.TextState(Texts)
+    local State = nil
+
+    for _, Text in ipairs(Texts) do
+        local Upper = " " .. string.upper(Text) .. " "
+
+        if string.find(Upper, "%WOFF%W") then
+            return false
+        end
+
+        if string.find(Upper, "%WON%W") then
+            State = true
+        end
+    end
+
+    return State
+end
+
 --// What to do about the last press: Check = { Since = os.clock() of the
 --// press, Presses = re-presses made so far }, Active = a sign of the auto
 --// working was seen since. "ok", "wait", "press" or "giveup".
@@ -192,7 +212,27 @@ return {
         --// nil when it cannot be told (not learned yet, button not there).
         function GameAuto:ReadState()
             local Button = GameAuto:FindButton()
-            return Button and Core.ReadState(Look(Button), S.OnLook, S.OffLook) or nil
+
+            if not Button then
+                return nil
+            end
+
+            local State = Core.ReadState(Look(Button), S.OnLook, S.OffLook)
+
+            if State ~= nil then
+                return State
+            end
+
+            --// Not learned: the button may say ON / OFF itself.
+            local Texts = {}
+
+            for _, Gui in ipairs({ Button, table.unpack(Button:GetDescendants(), 1, MAX_LOOK_PARTS) }) do
+                if (Gui:IsA("TextLabel") or Gui:IsA("TextButton")) and Gui.Visible then
+                    table.insert(Texts, Gui.Text)
+                end
+            end
+
+            return Core.TextState(Texts)
         end
 
         --// Presses the button even though we think it is on already: the

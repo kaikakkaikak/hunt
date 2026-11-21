@@ -183,6 +183,11 @@ return {
             DUNGEON_LOOT_TRIES = 3,
             --// Only boxes this close are flown to (the room we are in).
             DUNGEON_LOOT_RADIUS = 40,
+            --// Secret chests (a prompt in or under something with one of
+            --// these names, anywhere in workspace) are looked for all the
+            --// way and stopped at whenever one is this close.
+            DUNGEON_SECRET_CHEST_NAMES = { "Secret Chest" },
+            DUNGEON_SECRET_RADIUS = 60,
 
             --// The end: this boss dying ends the run. The end chest is
             --// waited for up to END_CHEST_WAIT seconds, the summary's Replay

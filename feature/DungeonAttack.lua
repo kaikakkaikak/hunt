@@ -63,6 +63,12 @@ return {
             end
         end
 
+        --// The game may have switched the auto off (after a box): its
+        --// look is checked at the next hit, and one off look is enough.
+        function DungeonAttack.CheckSoon()
+            S.CheckedAt, S.OffChecks = -math.huge, OFF_CHECKS - 1
+        end
+
         --// A new START DUNGEON: warn again if the auto cannot be found.
         function DungeonAttack.Reset()
             S.Warned = false
